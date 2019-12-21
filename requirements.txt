@@ -1,0 +1,13 @@
+Django==2.2.8
+common-framework==2019.11.25
+django-cors-headers==3.1.0
+django-extra-fields==1.2.4
+djangorestframework==3.11.0
+djangorestframework-jwt==1.11.0
+flake8==3.7.9
+ipdb==0.12.3
+# Pillow==6.2.1
+# pip==19.2.3
+# psycopg2-binary==2.8.2
+setuptools==42.0.2
+unidecode==1.1.1
