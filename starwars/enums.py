@@ -1,3 +1,14 @@
+# Skill dependancies
+SKILL_DEPENDANCIES = {
+    'brawn': ('athletics', 'brawl', 'melee', 'resilience', ),
+    'agility': ('coordination', 'gunnery', 'piloting', 'ranged_heavy', 'ranged_light', 'stealth', ),
+    'intellect': ('astrogation', 'computers', 'core_world', 'education', 'lore', 'mechanics',
+                  'medecine', 'outer_rim', 'underworld', 'xenology'),
+    'cunning': ('deception', 'perception', 'skulduggery', 'streetwise', 'survival', ),
+    'willpower': ('coercion', 'discipline', 'vigilance', ),
+    'presence': ('charm', 'cool', 'leadership', 'negociation', )
+}
+
 # Dice
 DICE = {
     'fortune': {
