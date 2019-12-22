@@ -2,7 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from starwars.enums import SKILL_DEPENDANCIES
+from starwars.enums import SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES
 
 
 class Player(AbstractUser):
@@ -24,15 +24,11 @@ class Statistics(models.Model):
     cunning = models.PositiveSmallIntegerField(default=0, verbose_name=_("ruse"))
     willpower = models.PositiveSmallIntegerField(default=0, verbose_name=_("volonté"))
     presence = models.PositiveSmallIntegerField(default=0, verbose_name=_("présence"))
-    force = models.PositiveSmallIntegerField(default=0, verbose_name=_("force"))
 
-    # General
-    soak_value = models.PositiveSmallIntegerField(default=0, verbose_name=_("valeur d'encaissement"))
-    actual_health = models.PositiveSmallIntegerField(default=0, verbose_name=_("santé actuelle"))
-    max_health = models.PositiveSmallIntegerField(default=0, verbose_name=_("santé max"))
-    actual_strain = models.PositiveSmallIntegerField(default=0, verbose_name=_("stress actuel"))
-    max_strain = models.PositiveSmallIntegerField(default=0, verbose_name=_("stress max"))
-    critical_wounds = models.PositiveSmallIntegerField(default=0, verbose_name=_("blessures critiques"))
+    # Force
+    force = models.PositiveSmallIntegerField(default=0, verbose_name=_("force"))
+    morality = models.PositiveSmallIntegerField(default=50, verbose_name=_("moralité"))
+    conflit = models.PositiveSmallIntegerField(default=0, verbose_name=_("conflit"))
 
     # Skills
     # General skills
@@ -111,3 +107,49 @@ class Character(Statistics):
     player = models.ForeignKey(
         'Player', blank=True, null=True, on_delete=models.SET_NULL,
         related_name='characters', verbose_name=_("joueur"))
+
+    name = models.CharField(max_length=50, verbose_name=_("nom"))
+    species = models.CharField(max_length=20, choices=SPECIES, verbose_name=_("espèce"))
+
+    # Combat
+    actual_health = models.PositiveSmallIntegerField(default=0, verbose_name=_("santé actuelle"))
+    actual_strain = models.PositiveSmallIntegerField(default=0, verbose_name=_("stress actuel"))
+    critical_wounds = models.PositiveSmallIntegerField(default=0, verbose_name=_("blessures critiques"))
+
+    # Experience
+    total_experience = models.PositiveIntegerField(default=0)
+    actual_experience = models.PositiveSmallIntegerField(default=0)
+
+    @property
+    def max_health(self):
+        """
+        Brawn + species ability + talent
+        :return: max_health value
+        """
+        max_health_value = self.brawn + SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
+        # TODO: add talent
+        return max_health_value
+
+    @property
+    def max_strain(self):
+        """
+        Willpower + species ability + talent
+        :return: max_health value
+        """
+        max_strain_value = self.willpower + SPECIES_ABILITIES.get(self.species, {}).get('max_strain', 10)
+        # TODO: add talent
+        return max_strain_value
+
+    @property
+    def soak_value(self):
+        """
+        Brawn + armor + talent
+        :return: soak_value
+        """
+        soak_value = self.brawn
+        # TODO: add armor/talent
+        return soak_value
+
+    class Meta:
+        verbose_name = _("personnage")
+        verbose_name_plural = _("personnages")

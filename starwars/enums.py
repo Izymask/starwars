@@ -1,13 +1,5 @@
-# Skill dependancies
-SKILL_DEPENDANCIES = {
-    'brawn': ('athletics', 'brawl', 'melee', 'resilience', ),
-    'agility': ('coordination', 'gunnery', 'piloting', 'ranged_heavy', 'ranged_light', 'stealth', ),
-    'intellect': ('astrogation', 'computers', 'core_world', 'education', 'lore', 'mechanics',
-                  'medecine', 'outer_rim', 'underworld', 'xenology'),
-    'cunning': ('deception', 'perception', 'skulduggery', 'streetwise', 'survival', ),
-    'willpower': ('coercion', 'discipline', 'vigilance', ),
-    'presence': ('charm', 'cool', 'leadership', 'negociation', )
-}
+from django.utils.translation import gettext_lazy as _
+
 
 # Dice
 DICE = {
@@ -87,4 +79,65 @@ DICE = {
         10: {'light_force': 2},
         11: {'light_force': 2}
     }
+}
+
+# Skill dependancies
+SKILL_DEPENDANCIES = {
+    'brawn': ('athletics', 'brawl', 'melee', 'resilience', ),
+    'agility': ('coordination', 'gunnery', 'piloting', 'ranged_heavy', 'ranged_light', 'stealth', ),
+    'intellect': ('astrogation', 'computers', 'core_world', 'education', 'lore', 'mechanics',
+                  'medecine', 'outer_rim', 'underworld', 'xenology'),
+    'cunning': ('deception', 'perception', 'skulduggery', 'streetwise', 'survival', ),
+    'willpower': ('coercion', 'discipline', 'vigilance', ),
+    'presence': ('charm', 'cool', 'leadership', 'negociation', )
+}
+
+# SPECIES
+SPECIES_HUMAN = 'human'
+SPECIES_TWILEK = 'twilek'
+SPECIES_BOTHAN = 'bothan'
+SPECIES_DROID = 'droid'
+SPECIES_GAND = 'gand'
+SPECIES_RODIAN = 'rodian'
+SPECIES_TRANDOSHAN = 'trandoshan'
+SPECIES_WOOKIE = 'wookie'
+SPECIES_CEREAN = 'cerean'
+SPECIES_KELDOR = 'keldor'
+SPECIES_MIRIALAN = 'mirialan'
+SPECIES_NAUTOLAN = 'nautolan'
+SPECIES_TOGRUTA = 'togruta'
+SPECIES_ZABRAK = 'zabrak'
+SPECIES_CREATURE = 'creature'
+SPECIES = (
+    # Common
+    (SPECIES_HUMAN, _("humain")),
+    (SPECIES_TWILEK, _("twi'lek")),
+    # Edge of the Empire
+    (SPECIES_BOTHAN, _("bothan")),
+    (SPECIES_DROID, _("droïde")),
+    (SPECIES_GAND, _("gand")),
+    (SPECIES_RODIAN, _("rodien")),
+    (SPECIES_TRANDOSHAN, _("trandoshan")),
+    (SPECIES_WOOKIE, _("wookie")),
+    # Force and Destiny
+    (SPECIES_CEREAN, _("céréen")),
+    (SPECIES_KELDOR, _("kel'dor")),
+    (SPECIES_MIRIALAN, _("mirialan")),
+    (SPECIES_NAUTOLAN, _("nautolan")),
+    (SPECIES_TOGRUTA, _("togruta")),
+    (SPECIES_ZABRAK, _("zabrak")),
+    # Other
+    (SPECIES_CREATURE, _("créature")),
+)
+
+
+# SPECIES_ABILITIES - default=10
+SPECIES_ABILITIES = {
+    'bothans': {'max_strain': 11},
+    'cerean': {'max_strain': 13},
+    'mirialan': {'max_health': 11},
+    'nautolan': {'max_health': 11, 'max_strain': 9},
+    'trandoshan': {'max_health': 12, 'max_strain': 9},
+    'twilek': {'max_strain': 11},
+    'wookie': {'max_health': 14, 'max_strain': 8},
 }
