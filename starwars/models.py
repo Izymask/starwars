@@ -73,10 +73,11 @@ class Statistics(models.Model):
     underworld = models.PositiveSmallIntegerField(default=0, verbose_name=_("pègre"))
     xenology = models.PositiveSmallIntegerField(default=0, verbose_name=_("xénologie"))
 
-    def get_skill_dice(self, skill_name, opposite=False):
+    def get_skill_dice(self, skill_name, dice_upgrades=0, opposite=False):
         """
         Get the aptitude/difficulty and mastery/challenge dice pool for a skill name
         :param skill_name: skill name
+        :param upgrade_numbers: number of dice to upgrade
         :param opposite: opposite test ? change the aptitude/mastery dice to difficulty/challenge
         :return: dict of dice pool
         """
@@ -89,6 +90,14 @@ class Statistics(models.Model):
             stat_value = 0
         mastery_dice = min(skill_value, stat_value)
         aptitude_dice = max(skill_value, stat_value) - mastery_dice
+        # Upgrade dice -> transform aptitude dice into mastery dice or add aptitude dice
+        if dice_upgrades:
+            for i in range(dice_upgrades):
+                if aptitude_dice:
+                    aptitude_dice -= 1
+                    mastery_dice += 1
+                else:
+                    aptitude_dice += 1
         return {
             'aptitude' if not opposite else 'difficulty': aptitude_dice,
             'mastery' if not opposite else 'challenge': mastery_dice
