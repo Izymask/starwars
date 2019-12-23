@@ -2,94 +2,198 @@ from django.utils.translation import gettext_lazy as _
 
 
 # Dice
+# Dice types
+DICE_TYPE_FORTUNE = 'fortune'
+DICE_TYPE_MISFORTUNE = 'misfortune'
+DICE_TYPE_APTITUDE = 'aptitude'
+DICE_TYPE_DIFFICULTY = 'difficulty'
+DICE_TYPE_MASTERY = 'mastery'
+DICE_TYPE_CHALLENGE = 'challenge'
+DICE_TYPE_FORCE = 'force'
+
+# Dice values
+DICE_SUCCESS = 'success'
+DICE_FAILURE = 'failure'
+DICE_ADVANTAGE = 'advantage'
+DICE_THREAT = 'threat'
+DICE_TRIUMPH = 'triumph'
+DICE_DISASTER = 'disaster'
+DICE_DARK_FORCE = 'dark_force'
+DICE_LIGHT_FORCE = 'light_force'
+
 DICE = {
-    'fortune': {
+    DICE_TYPE_FORTUNE: {
         0: None, 1: None,
-        2: {'success': 1},
-        3: {'success': 1, 'advantage': 1},
-        4: {'advantage': 2},
-        5: {'advantage': 1}
+        2: {DICE_SUCCESS: 1},
+        3: {DICE_SUCCESS: 1, DICE_ADVANTAGE: 1},
+        4: {DICE_ADVANTAGE: 2},
+        5: {DICE_ADVANTAGE: 1}
     },
-    'misfortune': {
+    DICE_TYPE_MISFORTUNE: {
         0: None, 1: None,
-        2: {'failure': 1},
-        3: {'failure': 1},
-        4: {'threat': 1},
-        5: {'threat': 1}
+        2: {DICE_FAILURE: 1},
+        3: {DICE_FAILURE: 1},
+        4: {DICE_THREAT: 1},
+        5: {DICE_THREAT: 1}
     },
-    'aptitude': {
+    DICE_TYPE_APTITUDE: {
         0: None,
-        1: {'success': 1},
-        2: {'success': 1},
-        3: {'success': 2},
-        4: {'advantage': 1},
-        5: {'advantage': 1},
-        6: {'success': 1, 'advantage': 1},
-        7: {'advantage': 2}
+        1: {DICE_SUCCESS: 1},
+        2: {DICE_SUCCESS: 1},
+        3: {DICE_SUCCESS: 2},
+        4: {DICE_ADVANTAGE: 1},
+        5: {DICE_ADVANTAGE: 1},
+        6: {DICE_SUCCESS: 1, DICE_ADVANTAGE: 1},
+        7: {DICE_ADVANTAGE: 2}
     },
-    'difficulty': {
+    DICE_TYPE_DIFFICULTY: {
         0: None,
-        1: {'failure': 1},
-        2: {'failure': 2},
-        3: {'threat': 1},
-        4: {'threat': 1},
-        5: {'threat': 1},
-        6: {'threat': 2},
-        7: {'failure': 1, 'threat': 1}
+        1: {DICE_FAILURE: 1},
+        2: {DICE_FAILURE: 2},
+        3: {DICE_THREAT: 1},
+        4: {DICE_THREAT: 1},
+        5: {DICE_THREAT: 1},
+        6: {DICE_THREAT: 2},
+        7: {DICE_FAILURE: 1, DICE_THREAT: 1}
     },
-    'mastery': {
+    DICE_TYPE_MASTERY: {
         0: None,
-        1: {'success': 1},
-        2: {'success': 1},
-        3: {'success': 2},
-        4: {'success': 2},
-        5: {'advantage': 1},
-        6: {'success': 1, 'advantage': 1},
-        7: {'success': 1, 'advantage': 1},
-        8: {'success': 1, 'advantage': 1},
-        9: {'advantage': 2},
-        10: {'advantage': 2},
-        11: {'triumph': 1}
+        1: {DICE_SUCCESS: 1},
+        2: {DICE_SUCCESS: 1},
+        3: {DICE_SUCCESS: 2},
+        4: {DICE_SUCCESS: 2},
+        5: {DICE_ADVANTAGE: 1},
+        6: {DICE_SUCCESS: 1, DICE_ADVANTAGE: 1},
+        7: {DICE_SUCCESS: 1, DICE_ADVANTAGE: 1},
+        8: {DICE_SUCCESS: 1, DICE_ADVANTAGE: 1},
+        9: {DICE_ADVANTAGE: 2},
+        10: {DICE_ADVANTAGE: 2},
+        11: {DICE_TRIUMPH: 1}
     },
-    'challenge': {
+    DICE_TYPE_CHALLENGE: {
         0: None,
-        1: {'failure': 1},
-        2: {'failure': 1},
-        3: {'failure': 2},
-        4: {'failure': 2},
-        5: {'threat': 1},
-        6: {'threat': 1},
-        7: {'failure': 1, 'threat': 1},
-        8: {'failure': 1, 'threat': 1},
-        9: {'threat': 2},
-        10: {'threat': 2},
-        11: {'disaster': 1}
+        1: {DICE_FAILURE: 1},
+        2: {DICE_FAILURE: 1},
+        3: {DICE_FAILURE: 2},
+        4: {DICE_FAILURE: 2},
+        5: {DICE_THREAT: 1},
+        6: {DICE_THREAT: 1},
+        7: {DICE_FAILURE: 1, DICE_THREAT: 1},
+        8: {DICE_FAILURE: 1, DICE_THREAT: 1},
+        9: {DICE_THREAT: 2},
+        10: {DICE_THREAT: 2},
+        11: {DICE_DISASTER: 1}
     },
-    'force': {
-        0: {'dark_force': 1},
-        1: {'dark_force': 1},
-        2: {'dark_force': 1},
-        3: {'dark_force': 1},
-        4: {'dark_force': 1},
-        5: {'dark_force': 1},
-        6: {'dark_force': 2},
-        7: {'light_force': 1},
-        8: {'light_force': 1},
-        9: {'light_force': 2},
-        10: {'light_force': 2},
-        11: {'light_force': 2}
+    DICE_TYPE_FORCE: {
+        0: {DICE_DARK_FORCE: 1},
+        1: {DICE_DARK_FORCE: 1},
+        2: {DICE_DARK_FORCE: 1},
+        3: {DICE_DARK_FORCE: 1},
+        4: {DICE_DARK_FORCE: 1},
+        5: {DICE_DARK_FORCE: 1},
+        6: {DICE_DARK_FORCE: 2},
+        7: {DICE_LIGHT_FORCE: 1},
+        8: {DICE_LIGHT_FORCE: 1},
+        9: {DICE_LIGHT_FORCE: 2},
+        10: {DICE_LIGHT_FORCE: 2},
+        11: {DICE_LIGHT_FORCE: 2}
     }
 }
 
+# ITEM TYPES
+ITEM_WEAPON = 'weapon'
+ITEM_ARMOR = 'armor'
+ITEM_CONSUMABLE = 'consumable'
+ITEM_MOD = 'mod'
+ITEM_MISC = 'misc'
+ITEM_TYPES = (
+    (ITEM_WEAPON, _("arme")),
+    (ITEM_ARMOR, _("armure")),
+    (ITEM_CONSUMABLE, _("consommable")),
+    (ITEM_MOD, _("amelioration")),
+    (ITEM_MISC, _("autre")),
+)
+
+
+# RANGE BANDS
+RANGE_ENGAGED = 'engaged'
+RANGE_SHORT = 'short'
+RANGE_MEDIUM = 'medium'
+RANGE_LONG = 'long'
+RANGE_EXTREME = 'extreme'
+RANGE_BANDS = (
+    (RANGE_ENGAGED, _("corps à corps")),
+    (RANGE_SHORT, _("portée courte")),
+    (RANGE_MEDIUM, _("portée moyenne")),
+    (RANGE_LONG, _("portée longue")),
+    (RANGE_EXTREME, _("portée extrème")),
+)
+
+
+# Stats
+STAT_AGILITY = 'agility'
+STAT_CUNNING = 'cunning'
+STAT_BRAWN = 'brawn'
+STAT_INTELLECT = 'intellect'
+STAT_PRESENCE = 'presence'
+STAT_WILLPOWER = 'willpower'
+
+
+# Skills
+ATHLETICS = 'athletics'
+ASTROGATION = 'astrogation'
+BRAWL = 'brawl'
+CHARM = 'charm'
+COERCION = 'coercion'
+COMPUTERS = 'computers'
+COOL = 'cool'
+COORDINATION = 'coordination'
+CORE_WORLD = 'core_world'
+DECEPTION = 'deception'
+DISCIPLINE = 'discipline'
+EDUCATION = 'education'
+GUNNERY = 'gunnery'
+LEADERSHIP = 'leadership'
+LIGHTSABER = 'lightsaber'
+LORE = 'lore'
+MECHANICS = 'mechanics'
+MEDECINE = 'medecine'
+MELEE = 'melee'
+NEGOCIATION = 'negociation'
+OUTER_RIM = 'outer_rim'
+PERCEPTION = 'perception'
+PILOTING = 'piloting'
+RANGED_HEAVY = 'ranged_heavy'
+RANGED_LIGHT = 'ranged_light'
+RESILIENCE = 'resilience'
+SKULDUGGERY = 'skulduggery'
+STEALTH = 'stealth'
+STREETWISE = 'streetwise'
+SURVIVAL = 'survival'
+UNDERWORLD = 'underworld'
+VIGILANCE = 'vigilance'
+XENOLOGY = 'xenology'
+
+ITEM_SKILLS = (
+    (BRAWL, _("méléé")),
+    (GUNNERY, _("artillerie")),
+    (LIGHTSABER, _("sabre laser")),
+    (MECHANICS, _("mécanique")),
+    (MEDECINE, _("médecine")),
+    (MELEE, _("corps à corps")),
+    (RANGED_HEAVY, _("distance (armes lourdes)")),
+    (RANGED_LIGHT, _("distance (armes légères)")),
+)
+
 # Skill dependancies
 SKILL_DEPENDANCIES = {
-    'brawn': ('athletics', 'brawl', 'melee', 'resilience', ),
-    'agility': ('coordination', 'gunnery', 'piloting', 'ranged_heavy', 'ranged_light', 'stealth', ),
-    'intellect': ('astrogation', 'computers', 'core_world', 'education', 'lore', 'mechanics',
-                  'medecine', 'outer_rim', 'underworld', 'xenology'),
-    'cunning': ('deception', 'perception', 'skulduggery', 'streetwise', 'survival', ),
-    'willpower': ('coercion', 'discipline', 'vigilance', ),
-    'presence': ('charm', 'cool', 'leadership', 'negociation', )
+    STAT_BRAWN: (ATHLETICS, BRAWL, LIGHTSABER, MELEE, RESILIENCE, ),
+    STAT_AGILITY: (COORDINATION, GUNNERY, PILOTING, RANGED_HEAVY, RANGED_LIGHT, STEALTH, ),
+    STAT_INTELLECT: (ASTROGATION, COMPUTERS, CORE_WORLD, EDUCATION, LORE, MECHANICS,
+                     MEDECINE, OUTER_RIM, UNDERWORLD, XENOLOGY),
+    STAT_CUNNING: (DECEPTION, PERCEPTION, SKULDUGGERY, STREETWISE, SURVIVAL, ),
+    STAT_WILLPOWER: (COERCION, DISCIPLINE, VIGILANCE, ),
+    STAT_PRESENCE: (CHARM, COOL, LEADERSHIP, NEGOCIATION, )
 }
 
 # SPECIES
@@ -133,11 +237,11 @@ SPECIES = (
 
 # SPECIES_ABILITIES - default=10
 SPECIES_ABILITIES = {
-    'bothans': {'max_strain': 11},
-    'cerean': {'max_strain': 13},
-    'mirialan': {'max_health': 11},
-    'nautolan': {'max_health': 11, 'max_strain': 9},
-    'trandoshan': {'max_health': 12, 'max_strain': 9},
-    'twilek': {'max_strain': 11},
-    'wookie': {'max_health': 14, 'max_strain': 8},
+    SPECIES_BOTHAN: {'max_strain': 11},
+    SPECIES_CEREAN: {'max_strain': 13},
+    SPECIES_MIRIALAN: {'max_health': 11},
+    SPECIES_NAUTOLAN: {'max_health': 11, 'max_strain': 9},
+    SPECIES_TRANDOSHAN: {'max_health': 12, 'max_strain': 9},
+    SPECIES_TWILEK: {'max_strain': 11},
+    SPECIES_WOOKIE: {'max_health': 14, 'max_strain': 8},
 }

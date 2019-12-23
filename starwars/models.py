@@ -2,7 +2,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from starwars.enums import SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES
+from starwars.enums import SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, \
+    RANGE_BANDS, ITEM_SKILLS
 
 
 class Player(AbstractUser):
@@ -57,6 +58,7 @@ class Statistics(models.Model):
     # Combat skills
     brawl = models.PositiveSmallIntegerField(default=0, verbose_name=_("pugilat"))
     gunnery = models.PositiveSmallIntegerField(default=0, verbose_name=_("artillerie"))
+    lightsaber = models.PositiveSmallIntegerField(default=0, verbose_name=_("sabre laser"))
     melee = models.PositiveSmallIntegerField(default=0, verbose_name=_("corps à corps"))
     ranged_heavy = models.PositiveSmallIntegerField(default=0, verbose_name=_("distance (armes lourdes)"))
     ranged_light = models.PositiveSmallIntegerField(default=0, verbose_name=_("distance (armes légères)"))
@@ -117,8 +119,18 @@ class Character(Statistics):
     critical_wounds = models.PositiveSmallIntegerField(default=0, verbose_name=_("blessures critiques"))
 
     # Experience
-    total_experience = models.PositiveIntegerField(default=0)
     actual_experience = models.PositiveSmallIntegerField(default=0)
+    total_experience = models.PositiveIntegerField(default=0)
+
+    @property
+    def defense(self):
+        """
+        Armor + talent
+        :return: defense value
+        """
+        defense_value = sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__defense', flat=True))
+        # TODO: add talent
+        return defense_value
 
     @property
     def max_health(self):
@@ -141,15 +153,63 @@ class Character(Statistics):
         return max_strain_value
 
     @property
+    def max_weight(self):
+        """
+        Brawn + 5
+        :return: max weigth value
+        """
+        return 5 + self.brawn
+
+    @property
     def soak_value(self):
         """
         Brawn + armor + talent
         :return: soak_value
         """
         soak_value = self.brawn
-        # TODO: add armor/talent
+        soak_value += sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
+        # TODO: add talent
         return soak_value
 
     class Meta:
         verbose_name = _("personnage")
         verbose_name_plural = _("personnages")
+
+
+class Item(models.Model):
+    name = models.CharField(max_length=50, verbose_name=_("nom"))
+    description = models.TextField(blank=True, verbose_name=_("description"))
+    type = models.CharField(max_length=10, choices=ITEM_TYPES, verbose_name=_("type"))
+    weigth = models.FloatField(default=0.0, verbose_name=_("encombrement"))
+    price = models.PositiveIntegerField(default=0, verbose_name=_("prix"))
+    hard_point = models.PositiveIntegerField(default=0, verbose_name=_("emplacement d'améliorations"))
+    skill = models.CharField(max_length=10, choices=ITEM_SKILLS, verbose_name=_("compétence associée"))
+
+    # Weapon Specific
+    range = models.CharField(max_length=10, choices=RANGE_BANDS, blank=True, verbose_name=_("portée"))
+    damage = models.PositiveSmallIntegerField(default=0, verbose_name=_("dégats"))
+    critique = models.PositiveSmallIntegerField(default=0, verbose_name=_("critique"))
+    # TODO: specials (Effect ?)
+
+    # Armor Specific
+    soak_value = models.PositiveSmallIntegerField(default=0, verbose_name=_("valeur d'encaissement"))
+    defense = models.PositiveSmallIntegerField(default=0, verbose_name=_("défense"))
+
+    @property
+    def is_equipable(self):
+        """
+        Objet équipable ?
+        """
+        return self.type in (ITEM_WEAPON, ITEM_ARMOR)
+
+    class Meta:
+        verbose_name = _("objet")
+        verbose_name_plural = _("objets")
+
+
+class Equipment(models.Model):
+    character = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='equipments', verbose_name=_("personnage"))
+    item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='+', verbose_name=_("objet"))
+    # TODO: Améliorations (Items ?)
+    quantity = models.PositiveIntegerField(default=1, verbose_name=_("quantité"))
+    equiped = models.BooleanField(default=False, verbose_name=_("équipé ?"))

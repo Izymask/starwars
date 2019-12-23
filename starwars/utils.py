@@ -1,6 +1,7 @@
 from random import choice
 
-from starwars.enums import DICE
+from starwars.enums import (DICE, DICE_SUCCESS, DICE_FAILURE, DICE_TRIUMPH, DICE_DISASTER, DICE_ADVANTAGE, DICE_THREAT,
+                            DICE_LIGHT_FORCE, DICE_DARK_FORCE)
 
 
 def roll_dice(fortune=0, misfortune=0, aptitude=0, difficulty=0, mastery=0, challenge=0, force=0):
@@ -15,14 +16,18 @@ def roll_dice(fortune=0, misfortune=0, aptitude=0, difficulty=0, mastery=0, chal
             for result_type, value in dice_result.items():
                 result_details[result_type] = result_details.get(result_type, 0) + value
 
+    # Add triumph/disaster to success/failure
+    result_details[DICE_SUCCESS] = result_details.get(DICE_SUCCESS, 0) + result_details.get(DICE_TRIUMPH, 0)
+    result_details[DICE_FAILURE] = result_details.get(DICE_FAILURE, 0) + result_details.get(DICE_DISASTER, 0)
+
     # Check Advantages/Threats
-    advantages = result_details.get('advantage', 0)
-    threats = result_details.get('threat', 0)
+    advantages = result_details.get(DICE_ADVANTAGE, 0)
+    threats = result_details.get(DICE_THREAT, 0)
 
     return {
-        'is_success': result_details.get('success', 0) > result_details.get('failure', 0),
+        'is_success': result_details.get(DICE_SUCCESS, 0) > result_details.get(DICE_FAILURE, 0),
         'remaining_advantages': max(advantages - threats, 0),
         'remaining_threats': max(threats - advantages, 0),
-        **{key: result_details.pop(key, 0) for key in ('triumph', 'disaster', 'light_force', 'dark_force')},
+        **{key: result_details.pop(key, 0) for key in (DICE_TRIUMPH, DICE_DISASTER, DICE_LIGHT_FORCE, DICE_DARK_FORCE)},
         'details': result_details
     }
