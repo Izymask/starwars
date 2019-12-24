@@ -1,6 +1,20 @@
 from django.utils.translation import gettext_lazy as _
 
 
+# Character types
+CHARACTER_TYPE_PC = 'pc'
+CHARACTER_TYPE_NPC = 'npc'
+CHARACTER_TYPE_MINION = 'minion'
+CHARACTER_TYPE_RIVAL = 'rival'
+CHARACTER_TYPE_NEMESIS = 'nemesis'
+CHARACTER_TYPES = (
+    (CHARACTER_TYPE_PC, _("personnage joueur")),
+    (CHARACTER_TYPE_NPC, _("personnage non joueur")),
+    (CHARACTER_TYPE_MINION, _("sbire")),
+    (CHARACTER_TYPE_RIVAL, _("rival")),
+    (CHARACTER_TYPE_NEMESIS, _("nemesis"))
+)
+
 # Dice
 # Dice types
 DICE_TYPE_FORTUNE = 'fortune'
@@ -219,7 +233,7 @@ ITEM_SKILLS = (
     (RANGED_LIGHT, _("distance (armes légères)")),
 )
 
-ALL_SKILLS =  ITEM_SKILLS + (
+ALL_SKILLS = ITEM_SKILLS + (
     (ATHLETICS, _("athlétisme")),
     (ASTROGATION, _("astrogation")),
     (CHARM, _("charme")),
@@ -228,7 +242,7 @@ ALL_SKILLS =  ITEM_SKILLS + (
     (COOL, _("calme")),
     (COORDINATION, _("coordination")),
     (CORE_WORLD, _("mondes du noyau")),
-    (DECEPTION,  _("tromperie")),
+    (DECEPTION, _("tromperie")),
     (DISCIPLINE, _("sang froid")),
     (EDUCATION, _("education")),
     (LEADERSHIP, _("commandement")),

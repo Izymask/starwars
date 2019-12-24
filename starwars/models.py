@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from starwars.enums import (
     SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, RANGE_BANDS, ITEM_SKILLS,
     EFFECT_ATTRIBUTE_MODIFIER, ATTRIBUTE_MAX_HEALTH, ATTRIBUTE_MAX_STRAIN, ATTRIBUTE_DEFENSE, ATTRIBUTE_SOAK_VALUE,
-    DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES)
+    DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES)
 
 
 class Player(AbstractUser):
@@ -157,12 +157,26 @@ class Character(Statistics):
         related_name='characters', verbose_name=_("joueur"))
 
     name = models.CharField(max_length=50, verbose_name=_("nom"))
+    description = models.TextField(blank=True, verbose_name=_("description"))
+    type = models.CharField(max_length=10, choices=CHARACTER_TYPES, verbose_name=_("type"))
     species = models.CharField(max_length=20, choices=SPECIES, verbose_name=_("espèce"))
 
     # Combat
     actual_health = models.PositiveSmallIntegerField(default=0, verbose_name=_("santé actuelle"))
     actual_strain = models.PositiveSmallIntegerField(default=0, verbose_name=_("stress actuel"))
     critical_wounds = models.PositiveSmallIntegerField(default=0, verbose_name=_("blessures critiques"))
+
+    # Position State - Direct combat dice modifiers
+    # Aiming => + 1 fortune dice on the character's ranged attack
+    aiming = models.BooleanField(default=False, verbose_name=_("visée"))
+    # Undercover => +1 misfortune dice on ranged attack targeting the character
+    undercover = models.BooleanField(default=False, verbose_name=_("sous couverture"))
+    # Guarded stance => +1 misfortune dice on character's attack and melee attack targeting the character
+    guarded_stance = models.BooleanField(default=False, verbose_name=_("en garde"))
+    # Dropped prone +1 misfortune dice on ranged attack and +1 fortune dice on melee attack targeting the character
+    dropped_prone = models.BooleanField(default=False, verbose_name=_("au sol"))
+    # Stunned - if 0: the character is active, else, decrease the "stunned" value each combat turn
+    stunned = models.PositiveSmallIntegerField(default=0, verbose_name=_("étourdi(e) (nombres de tours)"))
 
     # Experience
     actual_experience = models.PositiveSmallIntegerField(default=0)
@@ -216,6 +230,17 @@ class Character(Statistics):
         soak_value += sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
         soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
+
+    def start_combat_turn(self):
+        if self.stunned:
+            self.stunned -= 1
+        return
+
+    def end_combat_turn(self):
+        pass
+
+    def __str__(self):
+        return f'{self.name} ({self.player or self.get_type_display()})'
 
     class Meta:
         verbose_name = _("personnage")
