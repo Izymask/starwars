@@ -2,8 +2,10 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from starwars.enums import SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, \
-    RANGE_BANDS, ITEM_SKILLS, DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER
+from starwars.enums import (
+    SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, RANGE_BANDS, ITEM_SKILLS,
+    EFFECT_ATTRIBUTE_MODIFIER, ATTRIBUTE_MAX_HEALTH, ATTRIBUTE_MAX_STRAIN, ATTRIBUTE_DEFENSE, ATTRIBUTE_SOAK_VALUE,
+    DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES)
 
 
 class Player(AbstractUser):
@@ -80,23 +82,14 @@ class Statistics(models.Model):
     underworld = models.PositiveSmallIntegerField(default=0, verbose_name=_("pègre"))
     xenology = models.PositiveSmallIntegerField(default=0, verbose_name=_("xénologie"))
 
-    def _get_skill_modifier(self, skill_name):
+    def _get_attribute_modifier(self, attribute_name):
         """
-        Get the total value of a skill modifiers
-        :param skill_name: skill_name
+        Get the total value of an attribute modifiers
+        :param stat_name: attribute
         :return: modifiers value
         """
-        # TODO: add effects
-        return 0
-
-    def _get_stat_modifier(self, stat_name):
-        """
-        Get the total value of a statistic modifiers
-        :param stat_name: stat_name
-        :return: modifiers value
-        """
-        # TODO: add effects
-        return 0
+        stat_modifiers = self.effects.filter(type=EFFECT_ATTRIBUTE_MODIFIER, attribute=attribute_name)
+        return sum(stat_modifiers.values_list('modifier_value', flat=True))
 
     @property
     def stats(self):
@@ -107,8 +100,8 @@ class Statistics(models.Model):
         stats = {}
         for stat_name in DICT_STATS.keys():
             stat_value = getattr(self, stat_name, 0)
-            stat_value += self._get_stat_modifier(stat_name)
-            stats[stat_name] = stat_value
+            stat_value += self._get_attribute_modifier(stat_name)
+            stats[stat_name] = max(stat_value, 0)
         return stats
 
     @property
@@ -120,8 +113,8 @@ class Statistics(models.Model):
         skills = {}
         for skill_name in DICT_SKILLS.keys():
             skill_value = getattr(self, skill_name, 0)
-            skill_value += self._get_skill_modifier(skill_name)
-            skills[skill_name] = skill_value
+            skill_value += self._get_attribute_modifier(skill_name)
+            skills[skill_name] = max(skill_value, 0)
         return skills
 
     def get_skill_dice(self, skill_name, dice_upgrades=0, opposite=False):
@@ -182,7 +175,7 @@ class Character(Statistics):
         :return: defense value
         """
         defense_value = sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__defense', flat=True))
-        # TODO: add talent
+        defense_value += self._get_attribute_modifier(ATTRIBUTE_DEFENSE)
         return defense_value
 
     @property
@@ -192,7 +185,7 @@ class Character(Statistics):
         :return: max_health value
         """
         max_health_value = self.stats.get(STAT_BRAWN) + SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
-        # TODO: add talent
+        max_health_value += self._get_attribute_modifier(ATTRIBUTE_MAX_HEALTH)
         return max_health_value
 
     @property
@@ -202,7 +195,7 @@ class Character(Statistics):
         :return: max_health value
         """
         max_strain_value = self.stats.get(STAT_WILLPOWER) + SPECIES_ABILITIES.get(self.species, {}).get('max_strain', 10)
-        # TODO: add talent
+        max_strain_value += self._get_attribute_modifier(ATTRIBUTE_MAX_STRAIN)
         return max_strain_value
 
     @property
@@ -221,12 +214,25 @@ class Character(Statistics):
         """
         soak_value = self.stats.get(STAT_BRAWN)
         soak_value += sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
-        # TODO: add talent
+        soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
 
     class Meta:
         verbose_name = _("personnage")
         verbose_name_plural = _("personnages")
+
+
+class Effect(models.Model):
+    source_character = models.ForeignKey('Character', on_delete=models.CASCADE, blank=True, null=True, related_name='+', verbose_name=_("personnage source"))
+    target = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='effects', verbose_name=_("personnage cible"))
+    type = models.CharField(max_length=20, choices=EFFECT_TYPES, verbose_name=_("type"))
+    attribute = models.CharField(max_length=15, choices=ATTRIBUTES, blank=True, verbose_name=_("attribut modifié"))
+    dice = models.CharField(max_length=10, choices=DICE_TYPES, blank=True, verbose_name=_("dé modifié"))
+    modifier_value = models.IntegerField(default=0, verbose_name=_("valeur du modificateur"))
+
+    class Meta:
+        verbose_name = _("effet")
+        verbose_name_plural = _("effets")
 
 
 class Item(models.Model):

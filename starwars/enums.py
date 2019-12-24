@@ -10,6 +10,15 @@ DICE_TYPE_DIFFICULTY = 'difficulty'
 DICE_TYPE_MASTERY = 'mastery'
 DICE_TYPE_CHALLENGE = 'challenge'
 DICE_TYPE_FORCE = 'force'
+DICE_TYPES = (
+    (DICE_TYPE_FORTUNE, _("fortune")),
+    (DICE_TYPE_MISFORTUNE, _("infortune")),
+    (DICE_TYPE_APTITUDE, _("aptitude")),
+    (DICE_TYPE_DIFFICULTY, _("difficulté")),
+    (DICE_TYPE_MASTERY, _("maitrise")),
+    (DICE_TYPE_CHALLENGE, _("défi")),
+    (DICE_TYPE_FORCE, _("force"))
+)
 
 # Dice values
 DICE_SUCCESS = 'success'
@@ -99,6 +108,20 @@ DICE = {
         11: {DICE_LIGHT_FORCE: 2}
     }
 }
+
+# EFFECTS
+# EFFECT DURATIONS
+EFFECT_DURATION_PERMANENT = 'permanent'
+EFFECT_DURATION_TURN = 'turn'
+EFFECT_DURATION_FIGHT = 'fight'
+
+# EFFECT TYPES
+EFFECT_ATTRIBUTE_MODIFIER = 'attribute_modifier'
+EFFECT_DICE_POOL_MODIFIER = 'dice_pool_modifier'
+EFFECT_TYPES = (
+    (EFFECT_ATTRIBUTE_MODIFIER, _("modificateur d'attribut")),
+    (EFFECT_DICE_POOL_MODIFIER, _("modificateur de dés"))
+)
 
 # ITEM TYPES
 ITEM_WEAPON = 'weapon'
@@ -236,6 +259,18 @@ SKILL_DEPENDANCIES = {
     STAT_WILLPOWER: (COERCION, DISCIPLINE, VIGILANCE, ),
     STAT_PRESENCE: (CHARM, COOL, LEADERSHIP, NEGOCIATION, )
 }
+
+# EFFECT ATTRIBUTES (STATS + SKILLS + PROPERTIES)
+ATTRIBUTE_DEFENSE = 'defense'
+ATTRIBUTE_MAX_HEALTH = 'max_health'
+ATTRIBUTE_MAX_STRAIN = 'max_strain'
+ATTRIBUTE_SOAK_VALUE = 'soak_value'
+ATTRIBUTES = STATS + ALL_SKILLS + (
+    (ATTRIBUTE_DEFENSE, _("défense")),
+    (ATTRIBUTE_MAX_HEALTH, _("santé max")),
+    (ATTRIBUTE_MAX_STRAIN, _("stress max")),
+    (ATTRIBUTE_SOAK_VALUE, _("valeur d'encaissement"))
+)
 
 # SPECIES
 SPECIES_HUMAN = 'human'
