@@ -17,8 +17,10 @@ def roll_dice(fortune=0, misfortune=0, aptitude=0, difficulty=0, mastery=0, chal
                 result_details[result_type] = result_details.get(result_type, 0) + value
 
     # Add triumph/disaster to success/failure
-    result_details[DICE_SUCCESS] = result_details.get(DICE_SUCCESS, 0) + result_details.get(DICE_TRIUMPH, 0)
-    result_details[DICE_FAILURE] = result_details.get(DICE_FAILURE, 0) + result_details.get(DICE_DISASTER, 0)
+    total_success = result_details.get(DICE_SUCCESS, 0) + result_details.get(DICE_TRIUMPH, 0)
+    total_failures = result_details.get(DICE_FAILURE, 0) + result_details.get(DICE_DISASTER, 0)
+    result_details[DICE_SUCCESS] = total_success
+    result_details[DICE_FAILURE] = total_failures
 
     # Check Advantages/Threats
     advantages = result_details.get(DICE_ADVANTAGE, 0)
@@ -26,6 +28,7 @@ def roll_dice(fortune=0, misfortune=0, aptitude=0, difficulty=0, mastery=0, chal
 
     return {
         'is_success': result_details.get(DICE_SUCCESS, 0) > result_details.get(DICE_FAILURE, 0),
+        'remaining_success': max(total_success - total_failures, 0),
         'remaining_advantages': max(advantages - threats, 0),
         'remaining_threats': max(threats - advantages, 0),
         **{key: result_details.pop(key, 0) for key in (DICE_TRIUMPH, DICE_DISASTER, DICE_LIGHT_FORCE, DICE_DARK_FORCE)},

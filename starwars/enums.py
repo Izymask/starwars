@@ -137,6 +137,17 @@ STAT_BRAWN = 'brawn'
 STAT_INTELLECT = 'intellect'
 STAT_PRESENCE = 'presence'
 STAT_WILLPOWER = 'willpower'
+STAT_FORCE = 'force'
+STATS = (
+    (STAT_AGILITY, _("agilité")),
+    (STAT_CUNNING, _("ruse")),
+    (STAT_BRAWN, _("vigueur")),
+    (STAT_INTELLECT, _("intelligence")),
+    (STAT_PRESENCE, _("présence")),
+    (STAT_WILLPOWER, _("volonté")),
+    (STAT_FORCE, _("force"))
+)
+DICT_STATS = dict(STATS)
 
 
 # Skills
@@ -184,6 +195,36 @@ ITEM_SKILLS = (
     (RANGED_HEAVY, _("distance (armes lourdes)")),
     (RANGED_LIGHT, _("distance (armes légères)")),
 )
+
+ALL_SKILLS =  ITEM_SKILLS + (
+    (ATHLETICS, _("athlétisme")),
+    (ASTROGATION, _("astrogation")),
+    (CHARM, _("charme")),
+    (COERCION, _("coercition")),
+    (COMPUTERS, _("informatique")),
+    (COOL, _("calme")),
+    (COORDINATION, _("coordination")),
+    (CORE_WORLD, _("mondes du noyau")),
+    (DECEPTION,  _("tromperie")),
+    (DISCIPLINE, _("sang froid")),
+    (EDUCATION, _("education")),
+    (LEADERSHIP, _("commandement")),
+    (LORE, _("culture")),
+    (NEGOCIATION, _("negociation")),
+    (OUTER_RIM, _("bordure exterieure")),
+    (PERCEPTION, _("perception")),
+    (PILOTING, _("pilotage")),
+    (RESILIENCE, _("résistance")),
+    (SKULDUGGERY, _("magouilles")),
+    (STEALTH, _("discretion")),
+    (STREETWISE, _("système D")),
+    (SURVIVAL, _("survie")),
+    (UNDERWORLD, _("pègre")),
+    (VIGILANCE, _("vigilance")),
+    (XENOLOGY, _("xénologie"))
+)
+DICT_SKILLS = dict(ALL_SKILLS)
+
 
 # Skill dependancies
 SKILL_DEPENDANCIES = {
