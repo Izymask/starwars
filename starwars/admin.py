@@ -1,3 +1,6 @@
-from django.contrib import admin
+from common.admin import create_admin
 
-# Register your models here.
+from starwars.models import ALL_MODELS
+
+for model in ALL_MODELS:
+    create_admin(model)

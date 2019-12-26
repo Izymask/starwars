@@ -1,3 +1,5 @@
+from itertools import cycle
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -5,7 +7,9 @@ from django.utils.translation import gettext_lazy as _
 from starwars.enums import (
     SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, RANGE_BANDS, ITEM_SKILLS,
     EFFECT_ATTRIBUTE_MODIFIER, ATTRIBUTE_MAX_HEALTH, ATTRIBUTE_MAX_STRAIN, ATTRIBUTE_DEFENSE, ATTRIBUTE_SOAK_VALUE,
-    DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES)
+    DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
+    STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE)
+from starwars.utils import roll_dice
 
 
 class Player(AbstractUser):
@@ -22,6 +26,77 @@ class Player(AbstractUser):
 class Campaign(models.Model):
     name = models.CharField(max_length=50, verbose_name=_("nom"))
     description = models.TextField(blank=True, verbose_name=_("description"))
+    light_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("light token"))
+    dark_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("dark token"))
+
+    def set_destiny_tokens(self):
+        """
+        Roll a force die for each playable characters, light/dark results stands for destiny tokens
+        :return: None
+        """
+        forces_dice_result = roll_dice(force=self.characters.filter(type=CHARACTER_TYPE_PC).count())
+        self.light_tokens = forces_dice_result.get(DICE_LIGHT_FORCE)
+        self.dark_tokens = forces_dice_result.get(DICE_DARK_FORCE)
+
+    def use_light_token(self):
+        self.light_tokens -= 1
+        self.dark_tokens += 1
+        self.save()
+
+    def use_dark_token(self):
+        self.dark_tokens -= 1
+        self.light_tokens += 1
+        self.save()
+
+    # Combat
+    def set_initiative(self, characters_awareness):
+        """
+        Set the initiative for every characters involved in a fight
+        :param characters_awareness: dict (id_character: awareness(bool)
+        :return:
+        """
+        first_active_character = None
+        for id_character, awareness in characters_awareness.items():
+            character = self.characters.get(pk=id_character)
+            skill_to_test = COOL if awareness else VIGILANCE
+            dice_result = roll_dice(**character.get_skill_dice(skill_to_test))
+            initiative = dice_result.get('remaining_success', 0) * 10 \
+                + dice_result.get(DICE_TRIUMPH, 0) * 5 \
+                + dice_result.get(DICE_ADVANTAGE, 0)
+            character.initiative = initiative
+            character.is_fighting = True
+            if not first_active_character or initiative > first_active_character.initiative:
+                first_active_character = character
+            character.save()
+        first_active_character.is_active = True
+        first_active_character.save()
+
+    def next_turn(self):
+        """
+        End the actual character's turn and start the next character's turn
+        :return:
+        """
+        fighting_characters = self.characters.filter(is_fighting=True, actual_health__gt=0, actual_strain__gt=0)
+        active_character_turn_ended = False
+        next_character = None
+        for character in cycle(fighting_characters.order_by('-initiative')):
+            if character.is_active:
+                character.end_combat_turn()
+                active_character_turn_ended = True
+                continue
+            if not active_character_turn_ended:
+                continue
+            character.start_combat_turn()
+            next_character = character
+            break
+        return next_character
+
+    def end_fight(self):
+        for character in self.characters.filter(is_fighting=True):
+            character.end_fight()
+
+    def __str__(self):
+        return self.name
 
     class Meta:
         verbose_name = _("campagne")
@@ -152,6 +227,9 @@ class Statistics(models.Model):
 
 
 class Character(Statistics):
+    campaign = models.ForeignKey(
+        'Campaign', blank=True, null=True, on_delete=models.SET_NULL,
+        related_name='characters', verbose_name=_("campagne"))
     player = models.ForeignKey(
         'Player', blank=True, null=True, on_delete=models.SET_NULL,
         related_name='characters', verbose_name=_("joueur"))
@@ -162,6 +240,9 @@ class Character(Statistics):
     species = models.CharField(max_length=20, choices=SPECIES, verbose_name=_("espèce"))
 
     # Combat
+    initiative = models.PositiveSmallIntegerField(default=0, verbose_name=_("initiative"))
+    is_active = models.BooleanField(default=False, verbose_name=_("personnage actif ?"))
+    is_fighting = models.BooleanField(default=False, verbose_name=_("en combat ?"))
     actual_health = models.PositiveSmallIntegerField(default=0, verbose_name=_("santé actuelle"))
     actual_strain = models.PositiveSmallIntegerField(default=0, verbose_name=_("stress actuel"))
     critical_wounds = models.PositiveSmallIntegerField(default=0, verbose_name=_("blessures critiques"))
@@ -231,13 +312,47 @@ class Character(Statistics):
         soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
 
+    def modify_health(self, value, save=False):
+        """
+        Remove health
+        :return:
+        """
+        health = self.actual_health + value
+        self.actual_health = max(min(health, self.max_health), 0)
+        if save:
+            self.save()
+
+    def modify_strain(self, value, save=False):
+        """
+        Remove strain
+        :return:
+        """
+        strain = self.actual_strain + value
+        self.actual_strain = max(min(strain, self.max_strain), 0)
+        if save:
+            self.save()
+
     def start_combat_turn(self):
-        if self.stunned:
-            self.stunned -= 1
-        return
+        self.is_active = True
+        self.save()
 
     def end_combat_turn(self):
-        pass
+        if self.stunned:
+            self.stunned -= 1
+        self.is_active = False
+        self.save()
+
+    def end_fight(self):
+        self.is_fighting = False
+        # Recover strain
+        recovered_strain = max(self.stats.get(STAT_PRESENCE), self.skills.get(COOL))
+        self.modify_strain(value=recovered_strain)
+        self.save()
+
+    def rest(self):
+        self.actual_strain = self.max_strain
+        self.modify_health(value=1)
+        self.save()
 
     def __str__(self):
         return f'{self.name} ({self.player or self.get_type_display()})'
@@ -297,3 +412,13 @@ class Equipment(models.Model):
     # TODO: Améliorations (Items ?)
     quantity = models.PositiveIntegerField(default=1, verbose_name=_("quantité"))
     equiped = models.BooleanField(default=False, verbose_name=_("équipé ?"))
+
+
+ALL_MODELS = (
+    Player,
+    Campaign,
+    Character,
+    Effect,
+    Item,
+    Equipment
+)
