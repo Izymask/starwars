@@ -1,6 +1,14 @@
 from django.utils.translation import gettext_lazy as _
 
 
+# Activation types
+ACTIVATION_TYPE_ACTIVE = 'active'
+ACTIVATION_TYPE_PASSIVE = 'passive'
+ACTIVATION_TYPES = (
+    (ACTIVATION_TYPE_ACTIVE, _("actif")),
+    (ACTIVATION_TYPE_PASSIVE, _("passif"))
+)
+
 # Character types
 CHARACTER_TYPE_PC = 'pc'
 CHARACTER_TYPE_NPC = 'npc'
@@ -126,8 +134,15 @@ DICE = {
 # EFFECTS
 # EFFECT DURATIONS
 EFFECT_DURATION_PERMANENT = 'permanent'
-EFFECT_DURATION_TURN = 'turn'
+EFFECT_DURATION_SOURCE_TURN = 'source_turn'
+EFFECT_DURATION_TARGET_TURN = 'target_turn'
 EFFECT_DURATION_FIGHT = 'fight'
+EFFECT_DURATIONS = (
+    (EFFECT_DURATION_PERMANENT, _("permanent")),
+    (EFFECT_DURATION_SOURCE_TURN, _("nombre de tours - source")),
+    (EFFECT_DURATION_TARGET_TURN, _("nombre de tours - cible")),
+    (EFFECT_DURATION_FIGHT, _("durée du combat")),
+)
 
 # EFFECT TYPES
 EFFECT_ATTRIBUTE_MODIFIER = 'attribute_modifier'

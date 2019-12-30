@@ -1,6 +1,8 @@
 from itertools import cycle
 
+from common.models import CommonModel
 from django.contrib.auth.models import AbstractUser
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -8,7 +10,8 @@ from starwars.enums import (
     SKILL_DEPENDANCIES, SPECIES, SPECIES_ABILITIES, ITEM_TYPES, ITEM_WEAPON, ITEM_ARMOR, RANGE_BANDS, ITEM_SKILLS,
     EFFECT_ATTRIBUTE_MODIFIER, ATTRIBUTE_MAX_HEALTH, ATTRIBUTE_MAX_STRAIN, ATTRIBUTE_DEFENSE, ATTRIBUTE_SOAK_VALUE,
     DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
-    STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE)
+    STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE,
+    EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS)
 from starwars.utils import roll_dice
 
 
@@ -23,9 +26,18 @@ class Player(AbstractUser):
         verbose_name_plural = _("joueurs")
 
 
-class Campaign(models.Model):
+class NamedModel(models.Model):
     name = models.CharField(max_length=50, verbose_name=_("nom"))
     description = models.TextField(blank=True, verbose_name=_("description"))
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        abstract = True
+
+
+class Campaign(NamedModel):
     light_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("light token"))
     dark_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("dark token"))
 
@@ -95,9 +107,6 @@ class Campaign(models.Model):
         for character in self.characters.filter(is_fighting=True):
             character.end_fight()
 
-    def __str__(self):
-        return self.name
-
     class Meta:
         verbose_name = _("campagne")
         verbose_name_plural = _("campagnes")
@@ -163,7 +172,7 @@ class Statistics(models.Model):
         :param stat_name: attribute
         :return: modifiers value
         """
-        stat_modifiers = self.effects.filter(type=EFFECT_ATTRIBUTE_MODIFIER, attribute=attribute_name)
+        stat_modifiers = self.applied_effects.filter(effect__type=EFFECT_ATTRIBUTE_MODIFIER, effect__attribute=attribute_name)
         return sum(stat_modifiers.values_list('modifier_value', flat=True))
 
     @property
@@ -176,6 +185,8 @@ class Statistics(models.Model):
         for stat_name in DICT_STATS.keys():
             stat_value = getattr(self, stat_name, 0)
             stat_value += self._get_attribute_modifier(stat_name)
+            if self.type != CHARACTER_TYPE_NEMESIS:
+                stat_value = min(stat_value, 5)
             stats[stat_name] = max(stat_value, 0)
         return stats
 
@@ -189,6 +200,8 @@ class Statistics(models.Model):
         for skill_name in DICT_SKILLS.keys():
             skill_value = getattr(self, skill_name, 0)
             skill_value += self._get_attribute_modifier(skill_name)
+            if self.type != CHARACTER_TYPE_NEMESIS:
+                skill_value = min(skill_value, 5)
             skills[skill_name] = max(skill_value, 0)
         return skills
 
@@ -226,7 +239,7 @@ class Statistics(models.Model):
         abstract = True
 
 
-class Character(Statistics):
+class Character(NamedModel, Statistics):
     campaign = models.ForeignKey(
         'Campaign', blank=True, null=True, on_delete=models.SET_NULL,
         related_name='characters', verbose_name=_("campagne"))
@@ -234,8 +247,6 @@ class Character(Statistics):
         'Player', blank=True, null=True, on_delete=models.SET_NULL,
         related_name='characters', verbose_name=_("joueur"))
 
-    name = models.CharField(max_length=50, verbose_name=_("nom"))
-    description = models.TextField(blank=True, verbose_name=_("description"))
     type = models.CharField(max_length=10, choices=CHARACTER_TYPES, verbose_name=_("type"))
     species = models.CharField(max_length=20, choices=SPECIES, verbose_name=_("espèce"))
 
@@ -269,7 +280,7 @@ class Character(Statistics):
         Armor + talent
         :return: defense value
         """
-        defense_value = sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__defense', flat=True))
+        defense_value = sum(self.inventory.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__defense', flat=True))
         defense_value += self._get_attribute_modifier(ATTRIBUTE_DEFENSE)
         return defense_value
 
@@ -308,7 +319,7 @@ class Character(Statistics):
         :return: soak_value
         """
         soak_value = self.stats.get(STAT_BRAWN)
-        soak_value += sum(self.equipments.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
+        soak_value += sum(self.inventory.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
         soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
 
@@ -362,33 +373,108 @@ class Character(Statistics):
         verbose_name_plural = _("personnages")
 
 
-class Effect(models.Model):
-    source_character = models.ForeignKey('Character', on_delete=models.CASCADE, blank=True, null=True, related_name='+', verbose_name=_("personnage source"))
-    target = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='effects', verbose_name=_("personnage cible"))
+class Effect(NamedModel):
     type = models.CharField(max_length=20, choices=EFFECT_TYPES, verbose_name=_("type"))
+    # Modifier
     attribute = models.CharField(max_length=15, choices=ATTRIBUTES, blank=True, verbose_name=_("attribut modifié"))
     dice = models.CharField(max_length=10, choices=DICE_TYPES, blank=True, verbose_name=_("dé modifié"))
-    modifier_value = models.IntegerField(default=0, verbose_name=_("valeur du modificateur"))
+    # Activation
+    activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
+                                       verbose_name=_("type d'activation"))
+    # Duration
+    duration_type = models.CharField(max_length=11, choices=EFFECT_DURATIONS, blank=True,
+                                     verbose_name=_("type de durée"))
 
     class Meta:
         verbose_name = _("effet")
         verbose_name_plural = _("effets")
 
 
-class Item(models.Model):
-    name = models.CharField(max_length=50, verbose_name=_("nom"))
-    description = models.TextField(blank=True, verbose_name=_("description"))
+class Talent(NamedModel):
+    # Activation
+    activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
+                                       verbose_name=_("type d'activation"))
+
+    class Meta:
+        verbose_name = _("talent")
+        verbose_name_plural = _("talents")
+
+
+class EffectModifier(models.Model):
+    effect = models.ForeignKey('Effect', on_delete=models.CASCADE, related_name='+', verbose_name=_("effet"))
+    # Modifier
+    modifier_value = models.IntegerField(default=0, verbose_name=_("valeur du modificateur"))
+    # Duration
+    nb_turn = models.IntegerField(default=0, verbose_name=_("nombre de tours"))
+
+    def apply(self, target_ids, source_character_id=None, source_equipment_id=None, source_talent_id=None):
+        for target_id in target_ids:
+            CharacterEffect.objects.create(
+                target_id=target_id,
+                source_character_id=source_character_id,
+                source_equipment_id=source_equipment_id,
+                source_talent_id=source_talent_id,
+                effect=self.effect,
+                modifier_value=self.modifier_value,
+                nb_turn=self.nb_turn
+            )
+
+    def __str__(self):
+        return f'{self.effect} - valeur: {self.modifier_value} - nombres de tours: {self.nb_turn}'
+
+    class Meta:
+        abstract = True
+
+
+class ItemEffect(EffectModifier):
+    item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='effects', verbose_name=_("objet"))
+
+    class Meta:
+        verbose_name = _("effet d'objet")
+        verbose_name_plural = _("effets d'objet")
+
+
+class TalentEffect(EffectModifier):
+    talent = models.ForeignKey('Talent', on_delete=models.CASCADE, related_name='effects', verbose_name=_("talent"))
+
+    class Meta:
+        verbose_name = _("effet de talent")
+        verbose_name_plural = _("effets de talents")
+
+
+class CharacterEffect(EffectModifier):
+    # Source
+    source_character = models.ForeignKey('Character', on_delete=models.CASCADE, blank=True, null=True,
+                                         related_name='generated_effects',
+                                         verbose_name=_("personnage source"))
+    source_equipment = models.ForeignKey('Equipment', on_delete=models.CASCADE, blank=True, null=True,
+                                         related_name='generated_effects',
+                                         verbose_name=_("equipement source"))
+    source_talent = models.ForeignKey('Talent', on_delete=models.CASCADE, blank=True, null=True,
+                                         related_name='generated_effects',
+                                         verbose_name=_("talent source"))
+    target = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='applied_effects',
+                               verbose_name=_("personnage cible"))
+
+    def __str__(self):
+        return f'cible: {self.target} / effet: {self.effect}'
+
+    class Meta:
+        verbose_name = _("effet de personnages")
+        verbose_name_plural = _("effets de personnages")
+
+
+class Item(NamedModel):
     type = models.CharField(max_length=10, choices=ITEM_TYPES, verbose_name=_("type"))
     weigth = models.FloatField(default=0.0, verbose_name=_("encombrement"))
     price = models.PositiveIntegerField(default=0, verbose_name=_("prix"))
     hard_point = models.PositiveIntegerField(default=0, verbose_name=_("emplacement d'améliorations"))
-    skill = models.CharField(max_length=10, choices=ITEM_SKILLS, verbose_name=_("compétence associée"))
+    skill = models.CharField(max_length=10, choices=ITEM_SKILLS, blank=True, null=True, verbose_name=_("compétence associée"))
 
     # Weapon Specific
     range = models.CharField(max_length=10, choices=RANGE_BANDS, blank=True, verbose_name=_("portée"))
     damage = models.PositiveSmallIntegerField(default=0, verbose_name=_("dégats"))
     critique = models.PositiveSmallIntegerField(default=0, verbose_name=_("critique"))
-    # TODO: specials (Effect ?)
 
     # Armor Specific
     soak_value = models.PositiveSmallIntegerField(default=0, verbose_name=_("valeur d'encaissement"))
@@ -407,18 +493,43 @@ class Item(models.Model):
 
 
 class Equipment(models.Model):
-    character = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='equipments', verbose_name=_("personnage"))
+    character = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='inventory', verbose_name=_("personnage"))
     item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='+', verbose_name=_("objet"))
-    # TODO: Améliorations (Items ?)
     quantity = models.PositiveIntegerField(default=1, verbose_name=_("quantité"))
     equiped = models.BooleanField(default=False, verbose_name=_("équipé ?"))
+
+    def equip(self):
+        # TODO: check equipment limits
+        self.equiped = True
+        # Passive effects activation
+        for effect in self.item.effects.filter(effect__activation_type=ACTIVATION_TYPE_PASSIVE).all():
+            effect.apply(target_ids=[self.character_id], source_equipment_id=self.id, source_character_id=self.character_id)
+        self.save()
+
+    def unequip(self):
+        self.equiped = False
+        # Item effects disactivation
+        CharacterEffect.objects.filter(effect__activation_type=ACTIVATION_TYPE_PASSIVE,
+                                       source_equipment__id=self.id).delete()
+        self.save()
+
+    def __str__(self):
+        return f'objet: {self.item} / personnage: {self.character} / quantité: {self.quantity}'
+
+    class Meta:
+        verbose_name = _("équipement")
+        verbose_name_plural = _("équipements")
 
 
 ALL_MODELS = (
     Player,
     Campaign,
     Character,
+    CharacterEffect,
     Effect,
     Item,
-    Equipment
+    ItemEffect,
+    Equipment,
+    Talent,
+    TalentEffect
 )
