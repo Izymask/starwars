@@ -1,4 +1,5 @@
 from itertools import cycle
+from random import choice
 
 from common.models import CommonModel
 from django.contrib.auth.models import AbstractUser
@@ -11,7 +12,8 @@ from starwars.enums import (
     EFFECT_ATTRIBUTE_MODIFIER, ATTRIBUTE_MAX_HEALTH, ATTRIBUTE_MAX_STRAIN, ATTRIBUTE_DEFENSE, ATTRIBUTE_SOAK_VALUE,
     DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
     STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE,
-    EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS)
+    EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
+    CHARACTER_TYPE_NPC, DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER)
 from starwars.utils import roll_dice
 
 
@@ -38,8 +40,20 @@ class NamedModel(models.Model):
 
 
 class Campaign(NamedModel):
+    destiny_usage_percentage = models.PositiveSmallIntegerField(
+        default=10, verbose_name=_("pourcentage d'utilisation des jetons de destinée"))
     light_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("light token"))
     dark_tokens = models.PositiveSmallIntegerField(default=0, verbose_name=_("dark token"))
+
+    def _use_light_token(self):
+        self.light_tokens -= 1
+        self.dark_tokens += 1
+        self.save()
+
+    def _use_dark_token(self):
+        self.dark_tokens -= 1
+        self.light_tokens += 1
+        self.save()
 
     def set_destiny_tokens(self):
         """
@@ -50,15 +64,23 @@ class Campaign(NamedModel):
         self.light_tokens = forces_dice_result.get(DICE_LIGHT_FORCE)
         self.dark_tokens = forces_dice_result.get(DICE_DARK_FORCE)
 
-    def use_light_token(self):
-        self.light_tokens -= 1
-        self.dark_tokens += 1
-        self.save()
-
-    def use_dark_token(self):
-        self.dark_tokens -= 1
-        self.light_tokens += 1
-        self.save()
+    def get_destiny_upgrade(self, character, opposite=False):
+        """
+        Rand 1-100, if the result is under the destiny_usage_percentage, return True
+        :return: bool
+        """
+        use_ligth_token = (character.type == CHARACTER_TYPE_PC and not opposite)\
+                          or (character.type != CHARACTER_TYPE_PC and opposite)
+        if (use_ligth_token and not self.light_tokens) or (not use_ligth_token and not self.dark_tokens):
+            return False
+        rand = choice(range(1, 101))
+        if rand <= self.destiny_usage_percentage:
+            if use_ligth_token:
+                self._use_light_token()
+            else:
+                self._use_dark_token()
+            return True
+        return False
 
     # Combat
     def set_initiative(self, characters_awareness):
@@ -166,75 +188,6 @@ class Statistics(models.Model):
     underworld = models.PositiveSmallIntegerField(default=0, verbose_name=_("pègre"))
     xenology = models.PositiveSmallIntegerField(default=0, verbose_name=_("xénologie"))
 
-    def _get_attribute_modifier(self, attribute_name):
-        """
-        Get the total value of an attribute modifiers
-        :param stat_name: attribute
-        :return: modifiers value
-        """
-        stat_modifiers = self.applied_effects.filter(effect__type=EFFECT_ATTRIBUTE_MODIFIER, effect__attribute=attribute_name)
-        return sum(stat_modifiers.values_list('modifier_value', flat=True))
-
-    @property
-    def stats(self):
-        """
-        Get all the stats values with potential modifiers
-        :return: dict (stat_name: final value)
-        """
-        stats = {}
-        for stat_name in DICT_STATS.keys():
-            stat_value = getattr(self, stat_name, 0)
-            stat_value += self._get_attribute_modifier(stat_name)
-            if self.type != CHARACTER_TYPE_NEMESIS:
-                stat_value = min(stat_value, 5)
-            stats[stat_name] = max(stat_value, 0)
-        return stats
-
-    @property
-    def skills(self):
-        """
-        Get all the skills values with potential modifiers
-        :return: dict (skill_name: final value)
-        """
-        skills = {}
-        for skill_name in DICT_SKILLS.keys():
-            skill_value = getattr(self, skill_name, 0)
-            skill_value += self._get_attribute_modifier(skill_name)
-            if self.type != CHARACTER_TYPE_NEMESIS:
-                skill_value = min(skill_value, 5)
-            skills[skill_name] = max(skill_value, 0)
-        return skills
-
-    def get_skill_dice(self, skill_name, dice_upgrades=0, opposite=False):
-        """
-        Get the aptitude/difficulty and mastery/challenge dice pool for a skill name
-        :param skill_name: skill name
-        :param upgrade_numbers: number of dice to upgrade
-        :param opposite: opposite test ? change the aptitude/mastery dice to difficulty/challenge
-        :return: dict of dice pool
-        """
-        skill_value = self.skills.get(skill_name, 0)
-        for stat_name, skills in SKILL_DEPENDANCIES.items():
-            if skill_name in skills:
-                stat_value = self.stats.get(stat_name, 0)
-                break
-        else:
-            stat_value = 0
-        mastery_dice = min(skill_value, stat_value)
-        aptitude_dice = max(skill_value, stat_value) - mastery_dice
-        # Upgrade dice -> transform aptitude dice into mastery dice or add aptitude dice
-        if dice_upgrades:
-            for i in range(dice_upgrades):
-                if aptitude_dice:
-                    aptitude_dice -= 1
-                    mastery_dice += 1
-                else:
-                    aptitude_dice += 1
-        return {
-            'aptitude' if not opposite else 'difficulty': aptitude_dice,
-            'mastery' if not opposite else 'challenge': mastery_dice
-        }
-
     class Meta:
         abstract = True
 
@@ -267,12 +220,19 @@ class Character(NamedModel, Statistics):
     guarded_stance = models.BooleanField(default=False, verbose_name=_("en garde"))
     # Dropped prone +1 misfortune dice on ranged attack and +1 fortune dice on melee attack targeting the character
     dropped_prone = models.BooleanField(default=False, verbose_name=_("au sol"))
-    # Stunned - if 0: the character is active, else, decrease the "stunned" value each combat turn
-    stunned = models.PositiveSmallIntegerField(default=0, verbose_name=_("étourdi(e) (nombres de tours)"))
 
     # Experience
     actual_experience = models.PositiveSmallIntegerField(default=0)
     total_experience = models.PositiveIntegerField(default=0)
+
+    def _get_attribute_modifier(self, attribute_name):
+        """
+        Get the total value of an attribute modifiers
+        :param stat_name: attribute
+        :return: modifiers value
+        """
+        stat_modifiers = self.applied_effects.filter(effect__type=EFFECT_ATTRIBUTE_MODIFIER, effect__attribute=attribute_name)
+        return sum(stat_modifiers.values_list('modifier_value', flat=True))
 
     @property
     def defense(self):
@@ -323,6 +283,78 @@ class Character(NamedModel, Statistics):
         soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
 
+    @property
+    def stats(self):
+        """
+        Get all the stats values with potential modifiers
+        :return: dict (stat_name: final value)
+        """
+        stats = {}
+        for stat_name in DICT_STATS.keys():
+            stat_value = getattr(self, stat_name, 0)
+            stat_value += self._get_attribute_modifier(stat_name)
+            if self.type != CHARACTER_TYPE_NEMESIS:
+                stat_value = min(stat_value, 5)
+            stats[stat_name] = max(stat_value, 0)
+        return stats
+
+    @property
+    def skills(self):
+        """
+        Get all the skills values with potential modifiers
+        :return: dict (skill_name: final value)
+        """
+        skills = {}
+        for skill_name in DICT_SKILLS.keys():
+            skill_value = getattr(self, skill_name, 0)
+            skill_value += self._get_attribute_modifier(skill_name)
+            if self.type != CHARACTER_TYPE_NEMESIS:
+                skill_value = min(skill_value, 5)
+            skills[skill_name] = max(skill_value, 0)
+        return skills
+
+    def get_skill_dice(self, skill_name, dice_upgrades=0, target=None, opposite=False):
+        """
+        Get the aptitude/difficulty and mastery/challenge dice pool for a skill name
+        :param skill_name: skill name
+        :param upgrade_numbers: number of dice to upgrade
+        :param opposite: opposite test ? change the aptitude/mastery dice to difficulty/challenge
+        :return: dict of dice pool
+        """
+        skill_value = self.skills.get(skill_name, 0)
+        for stat_name, skills in SKILL_DEPENDANCIES.items():
+            if skill_name in skills:
+                stat_value = self.stats.get(stat_name, 0)
+                break
+        else:
+            stat_value = 0
+        mastery_dice = min(skill_value, stat_value)
+        aptitude_dice = max(skill_value, stat_value) - mastery_dice
+        # Upgrade dice -> transform aptitude dice into mastery dice or add aptitude dice
+        if dice_upgrades:
+            for i in range(dice_upgrades):
+                if aptitude_dice:
+                    aptitude_dice -= 1
+                    mastery_dice += 1
+                else:
+                    aptitude_dice += 1
+        result = {
+            'aptitude' if not opposite else 'difficulty': aptitude_dice,
+            'mastery' if not opposite else 'challenge': mastery_dice
+        }
+
+        # Dice modifier effects
+        dice_filter = dict(effect__type=EFFECT_DICE_POOL_MODIFIER, effect__attribute=skill_name)
+        dice_effects = self.applied_effects.filter(**dice_filter, effect__opposite_test=False)
+        if target:
+            target_dice_effects = CharacterEffect.objects.filter(
+                **dice_filter, target=target, effect__opposite_test=True)
+            dice_effects = dice_effects.union(target_dice_effects)
+        for dice_type, number in dice_effects.values_list('effect__dice', 'modifier_value'):
+            result[dice_type] = max(result.get(dice_type, 0) + number, 0)
+
+        return result
+
     def modify_health(self, value, save=False):
         """
         Remove health
@@ -348,8 +380,6 @@ class Character(NamedModel, Statistics):
         self.save()
 
     def end_combat_turn(self):
-        if self.stunned:
-            self.stunned -= 1
         self.is_active = False
         self.save()
 
@@ -365,6 +395,56 @@ class Character(NamedModel, Statistics):
         self.modify_health(value=1)
         self.save()
 
+    # Tests
+    def attack(self, target, equipment_id=None, upgrade=0, **bonus_dice):
+        pass
+
+    def opposite_skill_test(self, skill_name, target, opposite_skill='', check_destiny=True,
+                            dice_upgrades=0, **bonus_dice):
+        # Destiny upgrade ?
+        if check_destiny and self.campaign.get_destiny_upgrade(self):
+            dice_upgrades += 1
+        dice_pool = self.get_skill_dice(skill_name, target=target, dice_upgrades=dice_upgrades)
+
+        # Opposite test
+        # Destiny upgrade ?
+        target_dice_upgrades = 1 if check_destiny and self.campaign.get_destiny_upgrade(target) else 0
+        opposite_skill = opposite_skill or skill_name
+        dice_pool.update(target.get_skill_dice(opposite_skill, opposite=True, dice_upgrades=target_dice_upgrades))
+
+        for dice_type, value in bonus_dice.items():
+            dice_pool[dice_type] = dice_pool.get(dice_type, 0) + value
+
+        return {
+            'dice_pool': dice_pool,
+            'result': roll_dice(**dice_pool)
+        }
+
+    def skill_test(self, skill_name, difficulty=DIFFICULTY_SIMPLE, check_destiny=True,
+                   dice_upgrades=0, **bonus_dice):
+        # Destiny upgrade ?
+        if difficulty and check_destiny and self.campaign.get_destiny_upgrade(self):
+            dice_upgrades += 1
+        dice_pool = self.get_skill_dice(skill_name, dice_upgrades=dice_upgrades)
+
+        # Upgrade difficulty dice into challenge dice if destiny_upgrade is True
+        if difficulty and check_destiny and self.campaign.get_destiny_upgrade(self, opposite=True):
+            challenge_dice = 1
+        else:
+            challenge_dice = 0
+        dice_pool.update({
+            DICE_TYPE_DIFFICULTY: difficulty - challenge_dice,
+            DICE_TYPE_CHALLENGE: challenge_dice
+        })
+
+        for dice_type, value in bonus_dice.items():
+            dice_pool[dice_type] = dice_pool.get(dice_type, 0) + value
+
+        return {
+            'dice_pool': dice_pool,
+            'result': roll_dice(**dice_pool)
+        }
+
     def __str__(self):
         return f'{self.name} ({self.player or self.get_type_display()})'
 
@@ -376,14 +456,9 @@ class Character(NamedModel, Statistics):
 class Effect(NamedModel):
     type = models.CharField(max_length=20, choices=EFFECT_TYPES, verbose_name=_("type"))
     # Modifier
-    attribute = models.CharField(max_length=15, choices=ATTRIBUTES, blank=True, verbose_name=_("attribut modifié"))
+    attribute = models.CharField(max_length=15, choices=ATTRIBUTES, verbose_name=_("attribut modifié"))
     dice = models.CharField(max_length=10, choices=DICE_TYPES, blank=True, verbose_name=_("dé modifié"))
-    # Activation
-    activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
-                                       verbose_name=_("type d'activation"))
-    # Duration
-    duration_type = models.CharField(max_length=11, choices=EFFECT_DURATIONS, blank=True,
-                                     verbose_name=_("type de durée"))
+    opposite_test = models.BooleanField(default=False, verbose_name=_("effet sur un test en opposition ?"))
 
     class Meta:
         verbose_name = _("effet")
@@ -404,7 +479,11 @@ class EffectModifier(models.Model):
     effect = models.ForeignKey('Effect', on_delete=models.CASCADE, related_name='+', verbose_name=_("effet"))
     # Modifier
     modifier_value = models.IntegerField(default=0, verbose_name=_("valeur du modificateur"))
+    # Activation
+    activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
+                                       verbose_name=_("type d'activation"))
     # Duration
+    duration_type = models.CharField(max_length=11, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
     nb_turn = models.IntegerField(default=0, verbose_name=_("nombre de tours"))
 
     def apply(self, target_ids, source_character_id=None, source_equipment_id=None, source_talent_id=None):
@@ -502,19 +581,18 @@ class Equipment(models.Model):
         # TODO: check equipment limits
         self.equiped = True
         # Passive effects activation
-        for effect in self.item.effects.filter(effect__activation_type=ACTIVATION_TYPE_PASSIVE).all():
+        for effect in self.item.effects.filter(activation_type=ACTIVATION_TYPE_PASSIVE).all():
             effect.apply(target_ids=[self.character_id], source_equipment_id=self.id, source_character_id=self.character_id)
         self.save()
 
     def unequip(self):
         self.equiped = False
         # Item effects disactivation
-        CharacterEffect.objects.filter(effect__activation_type=ACTIVATION_TYPE_PASSIVE,
-                                       source_equipment__id=self.id).delete()
+        CharacterEffect.objects.filter(activation_type=ACTIVATION_TYPE_PASSIVE, source_equipment__id=self.id).delete()
         self.save()
 
     def __str__(self):
-        return f'objet: {self.item} / personnage: {self.character} / quantité: {self.quantity}'
+        return f'objet: {self.item} / personnage: {self.character} / quantité: {self.quantity} / Equipé: {self.equiped}'
 
     class Meta:
         verbose_name = _("équipement")
