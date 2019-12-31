@@ -1,10 +1,9 @@
 from itertools import cycle
 from random import choice
 
-from common.models import CommonModel
 from django.contrib.auth.models import AbstractUser
-from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.db.models import F, Q
 from django.utils.translation import gettext_lazy as _
 
 from starwars.enums import (
@@ -13,7 +12,7 @@ from starwars.enums import (
     DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
     STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE,
     EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
-    CHARACTER_TYPE_NPC, DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER)
+    DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT, EFFECT_DURATION_TURN)
 from starwars.utils import roll_dice
 
 
@@ -69,8 +68,8 @@ class Campaign(NamedModel):
         Rand 1-100, if the result is under the destiny_usage_percentage, return True
         :return: bool
         """
-        use_ligth_token = (character.type == CHARACTER_TYPE_PC and not opposite)\
-                          or (character.type != CHARACTER_TYPE_PC and opposite)
+        use_ligth_token = (character.type == CHARACTER_TYPE_PC and not opposite) or (
+            character.type != CHARACTER_TYPE_PC and opposite)
         if (use_ligth_token and not self.light_tokens) or (not use_ligth_token and not self.dark_tokens):
             return False
         rand = choice(range(1, 101))
@@ -128,6 +127,10 @@ class Campaign(NamedModel):
     def end_fight(self):
         for character in self.characters.filter(is_fighting=True):
             character.end_fight()
+        # Remove Effect with fight duration
+        CharacterEffect.objects.filter(
+            Q(Q(source_character__campaign_id=self.id) | Q(target__campaign_id=self.id)),
+            duration_type=EFFECT_DURATION_FIGHT).delete()
 
     class Meta:
         verbose_name = _("campagne")
@@ -250,7 +253,9 @@ class Character(NamedModel, Statistics):
         Brawn + species ability + talent
         :return: max_health value
         """
-        max_health_value = self.stats.get(STAT_BRAWN) + SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
+        max_health_value = self.stats.get(STAT_BRAWN)
+        if self.type == CHARACTER_TYPE_PC:
+            max_health_value += SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
         max_health_value += self._get_attribute_modifier(ATTRIBUTE_MAX_HEALTH)
         return max_health_value
 
@@ -260,7 +265,9 @@ class Character(NamedModel, Statistics):
         Willpower + species ability + talent
         :return: max_health value
         """
-        max_strain_value = self.stats.get(STAT_WILLPOWER) + SPECIES_ABILITIES.get(self.species, {}).get('max_strain', 10)
+        max_strain_value = self.stats.get(STAT_WILLPOWER)
+        if self.type == CHARACTER_TYPE_PC:
+            max_strain_value += SPECIES_ABILITIES.get(self.species, {}).get('max_strain', 10)
         max_strain_value += self._get_attribute_modifier(ATTRIBUTE_MAX_STRAIN)
         return max_strain_value
 
@@ -346,6 +353,8 @@ class Character(NamedModel, Statistics):
         # Dice modifier effects
         dice_filter = dict(effect__type=EFFECT_DICE_POOL_MODIFIER, effect__attribute=skill_name)
         dice_effects = self.applied_effects.filter(**dice_filter, effect__opposite_test=False)
+
+        # Opposite Modifiers - Effect affecting a test on the target character
         if target:
             target_dice_effects = CharacterEffect.objects.filter(
                 **dice_filter, target=target, effect__opposite_test=True)
@@ -381,6 +390,12 @@ class Character(NamedModel, Statistics):
 
     def end_combat_turn(self):
         self.is_active = False
+        # Decrease turn duration or remove effects with turn duration
+        queryset = CharacterEffect.objects.filter(
+            Q(Q(source_character_id=self.id) | Q(source_character__isnull=True, target_id=self.id)),
+            duration_type=EFFECT_DURATION_TURN)
+        queryset.filter(nb_turn=1).delete()
+        queryset.update(nb_turn=F('nb_turn') - 1)
         self.save()
 
     def end_fight(self):
@@ -420,21 +435,23 @@ class Character(NamedModel, Statistics):
             'result': roll_dice(**dice_pool)
         }
 
-    def skill_test(self, skill_name, difficulty=DIFFICULTY_SIMPLE, check_destiny=True,
-                   dice_upgrades=0, **bonus_dice):
+    def skill_test(self, skill_name, difficulty=DIFFICULTY_SIMPLE, challenge=0, dice_upgrades=0, **bonus_dice):
+        has_difficulty = difficulty or challenge
         # Destiny upgrade ?
-        if difficulty and check_destiny and self.campaign.get_destiny_upgrade(self):
+        if has_difficulty and self.campaign.get_destiny_upgrade(self):
             dice_upgrades += 1
         dice_pool = self.get_skill_dice(skill_name, dice_upgrades=dice_upgrades)
 
         # Upgrade difficulty dice into challenge dice if destiny_upgrade is True
-        if difficulty and check_destiny and self.campaign.get_destiny_upgrade(self, opposite=True):
-            challenge_dice = 1
-        else:
-            challenge_dice = 0
+        if has_difficulty and self.campaign.get_destiny_upgrade(self, opposite=True):
+            if difficulty:
+                difficulty -= 1
+                challenge += 1
+            else:
+                difficulty += 1
         dice_pool.update({
-            DICE_TYPE_DIFFICULTY: difficulty - challenge_dice,
-            DICE_TYPE_CHALLENGE: challenge_dice
+            DICE_TYPE_DIFFICULTY: difficulty,
+            DICE_TYPE_CHALLENGE: challenge
         })
 
         for dice_type, value in bonus_dice.items():
@@ -483,7 +500,7 @@ class EffectModifier(models.Model):
     activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
                                        verbose_name=_("type d'activation"))
     # Duration
-    duration_type = models.CharField(max_length=11, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
+    duration_type = models.CharField(max_length=10, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
     nb_turn = models.IntegerField(default=0, verbose_name=_("nombre de tours"))
 
     def apply(self, target_ids, source_character_id=None, source_equipment_id=None, source_talent_id=None):
@@ -530,8 +547,8 @@ class CharacterEffect(EffectModifier):
                                          related_name='generated_effects',
                                          verbose_name=_("equipement source"))
     source_talent = models.ForeignKey('Talent', on_delete=models.CASCADE, blank=True, null=True,
-                                         related_name='generated_effects',
-                                         verbose_name=_("talent source"))
+                                      related_name='generated_effects',
+                                      verbose_name=_("talent source"))
     target = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='applied_effects',
                                verbose_name=_("personnage cible"))
 
@@ -587,7 +604,6 @@ class Equipment(models.Model):
 
     def unequip(self):
         self.equiped = False
-        # Item effects disactivation
         CharacterEffect.objects.filter(activation_type=ACTIVATION_TYPE_PASSIVE, source_equipment__id=self.id).delete()
         self.save()
 
