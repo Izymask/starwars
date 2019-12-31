@@ -141,10 +141,12 @@ DIFFICULTY_FORMIDABLE = 5
 
 # EFFECTS
 # EFFECT DURATIONS
+EFFECT_DURATION_DIRECT = 'direct'
 EFFECT_DURATION_PERMANENT = 'permanent'
 EFFECT_DURATION_TURN = 'turn'
 EFFECT_DURATION_FIGHT = 'fight'
 EFFECT_DURATIONS = (
+    (EFFECT_DURATION_DIRECT, _("direct (one shot)")),
     (EFFECT_DURATION_PERMANENT, _("permanent")),
     (EFFECT_DURATION_TURN, _("nombre de tours")),
     (EFFECT_DURATION_FIGHT, _("durée du combat")),
@@ -153,23 +155,25 @@ EFFECT_DURATIONS = (
 # EFFECT TYPES
 EFFECT_ATTRIBUTE_MODIFIER = 'attribute_modifier'
 EFFECT_DICE_POOL_MODIFIER = 'dice_pool_modifier'
+EFFECT_HEALTH_MODIFIER = 'health_modifier'
+EFFECT_STRAIN_MODIFIER = 'strain_modifier'
 EFFECT_TYPES = (
     (EFFECT_ATTRIBUTE_MODIFIER, _("modificateur d'attribut")),
-    (EFFECT_DICE_POOL_MODIFIER, _("modificateur de dés"))
+    (EFFECT_HEALTH_MODIFIER, _("modificateur de santé")),
+    (EFFECT_DICE_POOL_MODIFIER, _("modificateur de dés")),
+    (EFFECT_STRAIN_MODIFIER, _("modificateur de stress"))
 )
 
 # ITEM TYPES
 ITEM_WEAPON = 'weapon'
 ITEM_ARMOR = 'armor'
 ITEM_CONSUMABLE = 'consumable'
-ITEM_MOD = 'mod'
 ITEM_MISC = 'misc'
 ITEM_TYPES = (
     (ITEM_WEAPON, _("arme")),
     (ITEM_ARMOR, _("armure")),
     (ITEM_CONSUMABLE, _("consommable")),
-    (ITEM_MOD, _("amelioration")),
-    (ITEM_MISC, _("autre")),
+    (ITEM_MISC, _("autre"))
 )
 
 

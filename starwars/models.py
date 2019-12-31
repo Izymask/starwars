@@ -3,7 +3,7 @@ from random import choice
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.db.models import F, Q
+from django.db.models import F, Q, Sum, FloatField
 from django.utils.translation import gettext_lazy as _
 
 from starwars.enums import (
@@ -12,7 +12,8 @@ from starwars.enums import (
     DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
     STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE,
     EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
-    DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT, EFFECT_DURATION_TURN)
+    DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT, EFFECT_DURATION_TURN,
+    EFFECT_DURATION_DIRECT, EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER)
 from starwars.utils import roll_dice
 
 
@@ -224,9 +225,10 @@ class Character(NamedModel, Statistics):
     # Dropped prone +1 misfortune dice on ranged attack and +1 fortune dice on melee attack targeting the character
     dropped_prone = models.BooleanField(default=False, verbose_name=_("au sol"))
 
-    # Experience
-    actual_experience = models.PositiveSmallIntegerField(default=0)
-    total_experience = models.PositiveIntegerField(default=0)
+    # Experience / Misc
+    actual_experience = models.PositiveSmallIntegerField(default=0, verbose_name=_("experience actuelle"))
+    total_experience = models.PositiveIntegerField(default=0, verbose_name=_("experience totale"))
+    money = models.PositiveSmallIntegerField(default=0, verbose_name=_("crédits"))
 
     def _get_attribute_modifier(self, attribute_name):
         """
@@ -235,7 +237,7 @@ class Character(NamedModel, Statistics):
         :return: modifiers value
         """
         stat_modifiers = self.applied_effects.filter(effect__type=EFFECT_ATTRIBUTE_MODIFIER, effect__attribute=attribute_name)
-        return sum(stat_modifiers.values_list('modifier_value', flat=True))
+        return stat_modifiers.aggregate(Sum('modifier_value')).get('modifier_value__sum') or 0
 
     @property
     def defense(self):
@@ -243,7 +245,8 @@ class Character(NamedModel, Statistics):
         Armor + talent
         :return: defense value
         """
-        defense_value = sum(self.inventory.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__defense', flat=True))
+        defense_value = self.inventory.filter(
+            equiped=True, item__type=ITEM_ARMOR).aggregate(Sum('item__defense')).get('item__defense__sum') or 0
         defense_value += self._get_attribute_modifier(ATTRIBUTE_DEFENSE)
         return defense_value
 
@@ -272,12 +275,22 @@ class Character(NamedModel, Statistics):
         return max_strain_value
 
     @property
-    def max_weight(self):
+    def max_charge(self):
         """
         Brawn + 5
         :return: max weigth value
         """
         return 5 + self.stats.get(STAT_BRAWN)
+
+    @property
+    def actual_charge(self):
+        return self.inventory.annotate(
+            total_item_weight=F('item__weight') * F('quantity')).aggregate(
+            Sum('total_item_weight', output_field=FloatField())).get('total_item_weight__sum') or 0
+
+    @property
+    def is_overloaded(self):
+        return self.actual_charge > self.max_charge
 
     @property
     def soak_value(self):
@@ -286,7 +299,8 @@ class Character(NamedModel, Statistics):
         :return: soak_value
         """
         soak_value = self.stats.get(STAT_BRAWN)
-        soak_value += sum(self.inventory.filter(equiped=True, item__type=ITEM_ARMOR).values_list('item__soak_value', flat=True))
+        soak_value += self.inventory.filter(
+            equiped=True, item__type=ITEM_ARMOR).aggregate(Sum('item__soak_value')).get('item__soak_value__sum') or 0
         soak_value += self._get_attribute_modifier(ATTRIBUTE_SOAK_VALUE)
         return soak_value
 
@@ -394,6 +408,11 @@ class Character(NamedModel, Statistics):
         queryset = CharacterEffect.objects.filter(
             Q(Q(source_character_id=self.id) | Q(source_character__isnull=True, target_id=self.id)),
             duration_type=EFFECT_DURATION_TURN)
+
+        # Apply health/strain modifiers effects
+        for effect in queryset.filter(effect__type__in=[EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER]):
+            effect.apply_direct_modifier(effect.target)
+
         queryset.filter(nb_turn=1).delete()
         queryset.update(nb_turn=F('nb_turn') - 1)
         self.save()
@@ -463,7 +482,7 @@ class Character(NamedModel, Statistics):
         }
 
     def __str__(self):
-        return f'{self.name} ({self.player or self.get_type_display()})'
+        return f'{self.name} - {self.get_species_display()} - ({self.player or self.get_type_display()})'
 
     class Meta:
         verbose_name = _("personnage")
@@ -473,7 +492,7 @@ class Character(NamedModel, Statistics):
 class Effect(NamedModel):
     type = models.CharField(max_length=20, choices=EFFECT_TYPES, verbose_name=_("type"))
     # Modifier
-    attribute = models.CharField(max_length=15, choices=ATTRIBUTES, verbose_name=_("attribut modifié"))
+    attribute = models.CharField(max_length=15, choices=ATTRIBUTES, blank=True, verbose_name=_("attribut modifié"))
     dice = models.CharField(max_length=10, choices=DICE_TYPES, blank=True, verbose_name=_("dé modifié"))
     opposite_test = models.BooleanField(default=False, verbose_name=_("effet sur un test en opposition ?"))
 
@@ -503,17 +522,40 @@ class EffectModifier(models.Model):
     duration_type = models.CharField(max_length=10, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
     nb_turn = models.IntegerField(default=0, verbose_name=_("nombre de tours"))
 
-    def apply(self, target_ids, source_character_id=None, source_equipment_id=None, source_talent_id=None):
-        for target_id in target_ids:
-            CharacterEffect.objects.create(
-                target_id=target_id,
-                source_character_id=source_character_id,
-                source_equipment_id=source_equipment_id,
-                source_talent_id=source_talent_id,
-                effect=self.effect,
-                modifier_value=self.modifier_value,
-                nb_turn=self.nb_turn
-            )
+    def apply(self, targets, source_character_id=None, source_equipment_id=None, source_talent_id=None):
+        """
+        Apply the effect on the targets
+        :param targets: targets
+        :param source_character_id: id of the source character
+        :param source_equipment_id: id of the source equipment
+        :param source_talent_id: id of the source talent
+        :return: None
+        """
+        for target in targets:
+            if self.duration_type == EFFECT_DURATION_DIRECT:
+                # Direct health/strain modifier
+                self.apply_direct_modifier(target)
+            else:
+                CharacterEffect.objects.create(
+                    target_id=target.id,
+                    source_character_id=source_character_id,
+                    source_equipment_id=source_equipment_id,
+                    source_talent_id=source_talent_id,
+                    effect=self.effect,
+                    modifier_value=self.modifier_value,
+                    nb_turn=self.nb_turn
+                )
+
+    def apply_direct_modifier(self, target):
+        """
+        Apply a direct effect modifier on the target (health or strain)
+        :param target: target
+        :return: None
+        """
+        if self.effect.type == EFFECT_HEALTH_MODIFIER:
+            target.modify_health(self.modifier_value, save=True)
+        elif self.effect.type == EFFECT_STRAIN_MODIFIER:
+            target.modify_strain(self.modifier_value, save=True)
 
     def __str__(self):
         return f'{self.effect} - valeur: {self.modifier_value} - nombres de tours: {self.nb_turn}'
@@ -562,7 +604,7 @@ class CharacterEffect(EffectModifier):
 
 class Item(NamedModel):
     type = models.CharField(max_length=10, choices=ITEM_TYPES, verbose_name=_("type"))
-    weigth = models.FloatField(default=0.0, verbose_name=_("encombrement"))
+    weight = models.FloatField(default=0.0, verbose_name=_("encombrement"))
     price = models.PositiveIntegerField(default=0, verbose_name=_("prix"))
     hard_point = models.PositiveIntegerField(default=0, verbose_name=_("emplacement d'améliorations"))
     skill = models.CharField(max_length=10, choices=ITEM_SKILLS, blank=True, null=True, verbose_name=_("compétence associée"))
@@ -583,6 +625,18 @@ class Item(NamedModel):
         """
         return self.type in (ITEM_WEAPON, ITEM_ARMOR)
 
+    def add_to_inventory(self, character_id, quantity=1):
+        """
+        Add the item in the character's inventory
+        :param character_id: character's id
+        :param quantity: quantity of the item to add in the character's inventory
+        :return: None
+        """
+        # Add quantity if the same item is already in the character's inventory, else create the equipment
+        if not Equipment.objects.filter(
+                character_id=character_id, item_id=self.id).update(quantity=F('quantity') + quantity):
+            Equipment.objects.create(character_id=character_id, item_id=self.id, quantity=quantity)
+
     class Meta:
         verbose_name = _("objet")
         verbose_name_plural = _("objets")
@@ -595,17 +649,32 @@ class Equipment(models.Model):
     equiped = models.BooleanField(default=False, verbose_name=_("équipé ?"))
 
     def equip(self):
-        # TODO: check equipment limits
         self.equiped = True
         # Passive effects activation
         for effect in self.item.effects.filter(activation_type=ACTIVATION_TYPE_PASSIVE).all():
-            effect.apply(target_ids=[self.character_id], source_equipment_id=self.id, source_character_id=self.character_id)
+            effect.apply(targets=[self.character], source_equipment_id=self.id, source_character_id=self.character_id)
         self.save()
 
     def unequip(self):
         self.equiped = False
         CharacterEffect.objects.filter(activation_type=ACTIVATION_TYPE_PASSIVE, source_equipment__id=self.id).delete()
         self.save()
+
+    def use_consumable(self, targets_ids):
+        """
+        Use consumable (medipack/grenade/..)
+        :param targets_ids: ids of the targets
+        :return: None
+        """
+        targets = Character.objects.filter(id__in=targets_ids)
+        for effect in self.item.effects.all():
+            effect.apply(targets, source_character_id=self.character_id)
+        # Remove consumable from inventory
+        if self.quantity == 1:
+            self.delete()
+        else:
+            self.quantity -= 1
+            self.save()
 
     def __str__(self):
         return f'objet: {self.item} / personnage: {self.character} / quantité: {self.quantity} / Equipé: {self.equiped}'
