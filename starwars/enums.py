@@ -143,12 +143,14 @@ DIFFICULTY_FORMIDABLE = 5
 # EFFECT DURATIONS
 EFFECT_DURATION_DIRECT = 'direct'
 EFFECT_DURATION_PERMANENT = 'permanent'
-EFFECT_DURATION_TURN = 'turn'
+EFFECT_DURATION_SOURCE_TURN = 'source_turn'
+EFFECT_DURATION_TARGET_TURN = 'target_turn'
 EFFECT_DURATION_FIGHT = 'fight'
 EFFECT_DURATIONS = (
     (EFFECT_DURATION_DIRECT, _("direct (one shot)")),
     (EFFECT_DURATION_PERMANENT, _("permanent")),
-    (EFFECT_DURATION_TURN, _("nombre de tours")),
+    (EFFECT_DURATION_SOURCE_TURN, _("nombre de tours (source)")),
+    (EFFECT_DURATION_TARGET_TURN, _("nombre de tours (cible)")),
     (EFFECT_DURATION_FIGHT, _("durée du combat")),
 )
 

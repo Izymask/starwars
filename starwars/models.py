@@ -12,8 +12,9 @@ from starwars.enums import (
     DICT_STATS, DICT_SKILLS, STAT_BRAWN, STAT_WILLPOWER, EFFECT_TYPES, DICE_TYPES, ATTRIBUTES, CHARACTER_TYPES,
     STAT_PRESENCE, COOL, CHARACTER_TYPE_PC, DICE_LIGHT_FORCE, DICE_DARK_FORCE, VIGILANCE, DICE_TRIUMPH, DICE_ADVANTAGE,
     EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
-    DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT, EFFECT_DURATION_TURN,
-    EFFECT_DURATION_DIRECT, EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER)
+    DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT,
+    EFFECT_DURATION_DIRECT, EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER, EFFECT_DURATION_TARGET_TURN,
+    EFFECT_DURATION_SOURCE_TURN)
 from starwars.utils import roll_dice
 
 
@@ -110,7 +111,7 @@ class Campaign(NamedModel):
         End the actual character's turn and start the next character's turn
         :return:
         """
-        fighting_characters = self.characters.filter(is_fighting=True, actual_health__gt=0, actual_strain__gt=0)
+        fighting_characters = self.characters.filter(is_fighting=True)
         active_character_turn_ended = False
         next_character = None
         for character in cycle(fighting_characters.order_by('-initiative')):
@@ -120,6 +121,7 @@ class Campaign(NamedModel):
                 continue
             if not active_character_turn_ended:
                 continue
+            character.refresh_from_db()
             character.start_combat_turn()
             next_character = character
             break
@@ -238,6 +240,10 @@ class Character(NamedModel, Statistics):
         """
         stat_modifiers = self.applied_effects.filter(effect__type=EFFECT_ATTRIBUTE_MODIFIER, effect__attribute=attribute_name)
         return stat_modifiers.aggregate(Sum('modifier_value')).get('modifier_value__sum') or 0
+
+    @property
+    def is_conscious(self):
+        return self.actual_health > 0 and self.actual_strain > 0
 
     @property
     def defense(self):
@@ -386,7 +392,7 @@ class Character(NamedModel, Statistics):
         health = self.actual_health + value
         self.actual_health = max(min(health, self.max_health), 0)
         if save:
-            self.save()
+            self.save(update_fields=["actual_health"])
 
     def modify_strain(self, value, save=False):
         """
@@ -396,7 +402,7 @@ class Character(NamedModel, Statistics):
         strain = self.actual_strain + value
         self.actual_strain = max(min(strain, self.max_strain), 0)
         if save:
-            self.save()
+            self.save(update_fields=["actual_strain"])
 
     def start_combat_turn(self):
         self.is_active = True
@@ -406,12 +412,12 @@ class Character(NamedModel, Statistics):
         self.is_active = False
         # Decrease turn duration or remove effects with turn duration
         queryset = CharacterEffect.objects.filter(
-            Q(Q(source_character_id=self.id) | Q(source_character__isnull=True, target_id=self.id)),
-            duration_type=EFFECT_DURATION_TURN)
+            Q(Q(duration_type=EFFECT_DURATION_SOURCE_TURN, source_character_id=self.id) | Q(
+                duration_type=EFFECT_DURATION_TARGET_TURN, target_id=self.id)))
 
         # Apply health/strain modifiers effects
         for effect in queryset.filter(effect__type__in=[EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER]):
-            effect.apply_direct_modifier(effect.target)
+            effect.apply_direct_modifier(self if effect.target_id == self.id else effect.target)
 
         queryset.filter(nb_turn=1).delete()
         queryset.update(nb_turn=F('nb_turn') - 1)
@@ -519,10 +525,10 @@ class EffectModifier(models.Model):
     activation_type = models.CharField(max_length=7, choices=ACTIVATION_TYPES, default=ACTIVATION_TYPE_PASSIVE,
                                        verbose_name=_("type d'activation"))
     # Duration
-    duration_type = models.CharField(max_length=10, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
+    duration_type = models.CharField(max_length=11, choices=EFFECT_DURATIONS, blank=True, verbose_name=_("type de durée"))
     nb_turn = models.IntegerField(default=0, verbose_name=_("nombre de tours"))
 
-    def apply(self, targets, source_character_id=None, source_equipment_id=None, source_talent_id=None):
+    def apply(self, targets, source_character_id=None, source_equipment_id=None, source_item_id=None, source_talent_id=None):
         """
         Apply the effect on the targets
         :param targets: targets
@@ -540,9 +546,12 @@ class EffectModifier(models.Model):
                     target_id=target.id,
                     source_character_id=source_character_id,
                     source_equipment_id=source_equipment_id,
+                    source_item_id=source_item_id,
                     source_talent_id=source_talent_id,
                     effect=self.effect,
                     modifier_value=self.modifier_value,
+                    activation_type=self.activation_type,
+                    duration_type=self.duration_type,
                     nb_turn=self.nb_turn
                 )
 
@@ -582,13 +591,16 @@ class TalentEffect(EffectModifier):
 
 class CharacterEffect(EffectModifier):
     # Source
-    source_character = models.ForeignKey('Character', on_delete=models.CASCADE, blank=True, null=True,
+    source_character = models.ForeignKey('Character', on_delete=models.SET_NULL, blank=True, null=True,
                                          related_name='generated_effects',
                                          verbose_name=_("personnage source"))
-    source_equipment = models.ForeignKey('Equipment', on_delete=models.CASCADE, blank=True, null=True,
+    source_equipment = models.ForeignKey('Equipment', on_delete=models.SET_NULL, blank=True, null=True,
                                          related_name='generated_effects',
                                          verbose_name=_("equipement source"))
-    source_talent = models.ForeignKey('Talent', on_delete=models.CASCADE, blank=True, null=True,
+    source_item = models.ForeignKey('Item', on_delete=models.SET_NULL, blank=True, null=True,
+                                    related_name='generated_effects',
+                                    verbose_name=_("objet source"))
+    source_talent = models.ForeignKey('Talent', on_delete=models.SET_NULL, blank=True, null=True,
                                       related_name='generated_effects',
                                       verbose_name=_("talent source"))
     target = models.ForeignKey('Character', on_delete=models.CASCADE, related_name='applied_effects',
@@ -668,7 +680,7 @@ class Equipment(models.Model):
         """
         targets = Character.objects.filter(id__in=targets_ids)
         for effect in self.item.effects.all():
-            effect.apply(targets, source_character_id=self.character_id)
+            effect.apply(targets, source_character_id=self.character_id, source_item_id=self.item_id)
         # Remove consumable from inventory
         if self.quantity == 1:
             self.delete()
