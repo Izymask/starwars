@@ -1,5 +1,5 @@
 from itertools import cycle
-from random import choice
+from random import randint
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -74,7 +74,7 @@ class Campaign(NamedModel):
             character.type != CHARACTER_TYPE_PC and opposite)
         if (use_ligth_token and not self.light_tokens) or (not use_ligth_token and not self.dark_tokens):
             return False
-        rand = choice(range(1, 101))
+        rand = randint(1, 100)
         if rand <= self.destiny_usage_percentage:
             if use_ligth_token:
                 self._use_light_token()
@@ -411,7 +411,7 @@ class Character(NamedModel, Statistics):
     def end_combat_turn(self):
         self.is_active = False
         # Decrease turn duration or remove effects with turn duration
-        queryset = CharacterEffect.objects.filter(
+        queryset = CharacterEffect.objects.select_related('target').filter(
             Q(Q(duration_type=EFFECT_DURATION_SOURCE_TURN, source_character_id=self.id) | Q(
                 duration_type=EFFECT_DURATION_TARGET_TURN, target_id=self.id)))
 
@@ -624,6 +624,7 @@ class Item(NamedModel):
     # Weapon Specific
     range = models.CharField(max_length=10, choices=RANGE_BANDS, blank=True, verbose_name=_("portée"))
     damage = models.PositiveSmallIntegerField(default=0, verbose_name=_("dégats"))
+    skill_based_damage = models.CharField(max_length=15, choices=ATTRIBUTES, blank=True, verbose_name=_("dégats basés sur attribut"))
     critique = models.PositiveSmallIntegerField(default=0, verbose_name=_("critique"))
 
     # Armor Specific

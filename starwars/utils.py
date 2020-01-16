@@ -1,4 +1,4 @@
-from random import choice
+from random import randint
 
 from starwars.enums import (DICE, DICE_SUCCESS, DICE_FAILURE, DICE_TRIUMPH, DICE_DISASTER, DICE_ADVANTAGE, DICE_THREAT,
                             DICE_LIGHT_FORCE, DICE_DARK_FORCE)
@@ -12,7 +12,7 @@ def roll_dice(fortune=0, misfortune=0, aptitude=0, difficulty=0, mastery=0, chal
             continue
         dice = DICE.get(dice_type)
         for roll in range(number):
-            dice_result = dice.get(choice(range(len(dice)))) or {}
+            dice_result = dice.get(randint(0, len(dice) - 1)) or {}
             for result_type, value in dice_result.items():
                 result_details[result_type] = result_details.get(result_type, 0) + value
 
