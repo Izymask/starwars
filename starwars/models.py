@@ -14,7 +14,7 @@ from starwars.enums import (
     EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
     DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT,
     EFFECT_DURATION_DIRECT, EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER, EFFECT_DURATION_TARGET_TURN,
-    EFFECT_DURATION_SOURCE_TURN)
+    EFFECT_DURATION_SOURCE_TURN, RANGE_ENGAGED)
 from starwars.utils import roll_dice
 
 
@@ -231,6 +231,7 @@ class Character(NamedModel, Statistics):
     actual_experience = models.PositiveSmallIntegerField(default=0, verbose_name=_("experience actuelle"))
     total_experience = models.PositiveIntegerField(default=0, verbose_name=_("experience totale"))
     money = models.PositiveSmallIntegerField(default=0, verbose_name=_("crédits"))
+    minion_quantity = models.PositiveSmallIntegerField(default=1, verbose_name=_("nombre de personnages (Sbires)"))
 
     def _get_attribute_modifier(self, attribute_name):
         """
@@ -389,6 +390,8 @@ class Character(NamedModel, Statistics):
         Remove health
         :return:
         """
+        if not value:
+            return
         health = self.actual_health + value
         self.actual_health = max(min(health, self.max_health), 0)
         if save:
@@ -399,6 +402,11 @@ class Character(NamedModel, Statistics):
         Remove strain
         :return:
         """
+        if not value:
+            return
+        # Only PC and Nemesis can loose strain / others take health damages instead
+        if self.type not in [CHARACTER_TYPE_PC, CHARACTER_TYPE_NEMESIS]:
+            return self.modify_health(value, save=save)
         strain = self.actual_strain + value
         self.actual_strain = max(min(strain, self.max_strain), 0)
         if save:
@@ -436,7 +444,7 @@ class Character(NamedModel, Statistics):
         self.save()
 
     # Tests
-    def attack(self, target, equipment_id=None, upgrade=0, **bonus_dice):
+    def attack(self, target, weapon_id=None, upgrade=0, range=RANGE_ENGAGED,**bonus_dice):
         pass
 
     def opposite_skill_test(self, skill_name, target, opposite_skill='', check_destiny=True,
