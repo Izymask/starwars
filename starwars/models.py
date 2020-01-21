@@ -1,6 +1,7 @@
 from itertools import cycle
 from random import randint
 
+from common.fields import JsonField
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models import F, Q, Sum, FloatField
@@ -14,7 +15,7 @@ from starwars.enums import (
     EFFECT_DURATIONS, ACTIVATION_TYPE_PASSIVE, ACTIVATION_TYPES, CHARACTER_TYPE_NEMESIS, DIFFICULTY_SIMPLE,
     DICE_TYPE_DIFFICULTY, DICE_TYPE_CHALLENGE, EFFECT_DICE_POOL_MODIFIER, EFFECT_DURATION_FIGHT,
     EFFECT_DURATION_DIRECT, EFFECT_HEALTH_MODIFIER, EFFECT_STRAIN_MODIFIER, EFFECT_DURATION_TARGET_TURN,
-    EFFECT_DURATION_SOURCE_TURN, RANGE_ENGAGED)
+    EFFECT_DURATION_SOURCE_TURN, RANGE_ENGAGED, CHARACTER_TYPE_MINION)
 from starwars.utils import roll_dice
 
 
@@ -231,7 +232,11 @@ class Character(NamedModel, Statistics):
     actual_experience = models.PositiveSmallIntegerField(default=0, verbose_name=_("experience actuelle"))
     total_experience = models.PositiveIntegerField(default=0, verbose_name=_("experience totale"))
     money = models.PositiveSmallIntegerField(default=0, verbose_name=_("crédits"))
+
+    # NPC specific
+    max_health_value = models.PositiveSmallIntegerField(default=5, verbose_name=_("Points de vie (NPC)"))
     minion_quantity = models.PositiveSmallIntegerField(default=1, verbose_name=_("nombre de personnages (Sbires)"))
+    special_skills_list = JsonField(blank=True, null=True, verbose_name=_("compétences spéciales (carrière, sbires, etc..)"))
 
     def _get_attribute_modifier(self, attribute_name):
         """
@@ -244,7 +249,8 @@ class Character(NamedModel, Statistics):
 
     @property
     def is_conscious(self):
-        return self.actual_health > 0 and self.actual_strain > 0
+        # Only PC and Nemesis have strain
+        return self.actual_health > 0 and (self.actual_strain > 0 or self.type not in [CHARACTER_TYPE_PC, CHARACTER_TYPE_NEMESIS])
 
     @property
     def defense(self):
@@ -263,9 +269,12 @@ class Character(NamedModel, Statistics):
         Brawn + species ability + talent
         :return: max_health value
         """
-        max_health_value = self.stats.get(STAT_BRAWN)
         if self.type == CHARACTER_TYPE_PC:
-            max_health_value += SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
+            max_health_value = self.stats.get(STAT_BRAWN) + SPECIES_ABILITIES.get(self.species, {}).get('max_health', 10)
+        else:
+            max_health_value = self.max_health_value
+            if self.type == CHARACTER_TYPE_MINION:
+                max_health_value *= self.minion_quantity
         max_health_value += self._get_attribute_modifier(ATTRIBUTE_MAX_HEALTH)
         return max_health_value
 
@@ -359,6 +368,9 @@ class Character(NamedModel, Statistics):
         mastery_dice = min(skill_value, stat_value)
         aptitude_dice = max(skill_value, stat_value) - mastery_dice
         # Upgrade dice -> transform aptitude dice into mastery dice or add aptitude dice
+        # Minions gains upgrade dice on special skills (if any)
+        if self.type == CHARACTER_TYPE_MINION and skill_name in (self.special_skills_list or []):
+            dice_upgrades += self.minion_quantity - 1
         if dice_upgrades:
             for i in range(dice_upgrades):
                 if aptitude_dice:
@@ -394,8 +406,14 @@ class Character(NamedModel, Statistics):
             return
         health = self.actual_health + value
         self.actual_health = max(min(health, self.max_health), 0)
+        # Update minions quantity
+        if value < 0 and self.type == CHARACTER_TYPE_MINION:
+            new_minion_quantity, modulo = divmod(self.actual_health, self.minion_quantity)
+            if modulo:
+                new_minion_quantity += 1
+            self.minion_quantity = new_minion_quantity
         if save:
-            self.save(update_fields=["actual_health"])
+            self.save(update_fields=['actual_health', 'minion_quantity'])
 
     def modify_strain(self, value, save=False):
         """
@@ -410,7 +428,7 @@ class Character(NamedModel, Statistics):
         strain = self.actual_strain + value
         self.actual_strain = max(min(strain, self.max_strain), 0)
         if save:
-            self.save(update_fields=["actual_strain"])
+            self.save(update_fields=['actual_strain'])
 
     def start_combat_turn(self):
         self.is_active = True
