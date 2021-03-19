@@ -2,7 +2,7 @@ Django==2.2.10
 common-framework==2019.11.25
 django-cors-headers==3.1.0
 django-extra-fields==1.2.4
-djangorestframework==3.11.0
+djangorestframework==3.11.2
 djangorestframework-jwt==1.11.0
 flake8==3.7.9
 ipdb==0.12.3
