@@ -1,4 +1,4 @@
-Django==2.2.10
+Django==2.2.27
 common-framework==2019.11.25
 django-cors-headers==3.1.0
 django-extra-fields==1.2.4
